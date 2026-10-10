@@ -73,12 +73,26 @@ static void runSuite(const char* name, void (*func)()) {
 }
 
 int main() {
+    // from causing a false positive memory leak in the test framework.
+    readTextFile("build_and_test.bat");
+    {
+        int a; double b; std::string w;
+        std::istringstream ss("123 45.6 hello\nworld");
+        ss >> a >> b >> w;
+        std::getline(ss, w);
+        volatile std::string dummy = std::to_string(123456789);
+    }
+    
     runSuite("Types", runTypesTests);
     runSuite("Queue", runQueueTests);
     runSuite("RequestList", runRequestListTests);
     runSuite("Sorting", runSortingTests);
     runSuite("DeliveryLog", runDeliveryLogTests);
     runSuite("AVL", runAVLTests);
+    runSuite("Graph", runGraphTests);
+    runSuite("Dijkstra", runDijkstraTests);
+    runSuite("Engine", runEngineTests);
+    runSuite("Scenarios", runScenarioTests);
     
     std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
     

@@ -1,0 +1,22 @@
+Scenario 4: AVL demo (camps inserted in the order 10, 20, 30, 40, 50, 25)
+
+Rotations, in order:
+- insert 30: RR at node 10
+- insert 50: RR at node 30
+- insert 25: RL at node 20
+(inserting 10, 20 and 40 causes no rotation)
+
+Trace after load ends with: AVL rotations: RR at node 10, RR at node 30, RL at node 20
+
+Final tree, preorder (id, height, balance):
+30 (3, 0), 20 (2, 0), 10 (1, 0), 25 (1, 0), 40 (2, -1), 50 (1, 0)
+
+Drawn:
+ROOT 30
+    L: 20
+        L: 10
+        R: 25
+    R: 40
+        R: 50
+
+Routes: each camp has one direct road to the depot. Times in minutes: camp 10 = 5, 20 = 10, 30 = 15, 40 = 20, 50 = 25, 25 = 10.

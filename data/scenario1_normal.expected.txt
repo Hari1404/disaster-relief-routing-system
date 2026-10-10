@@ -1,0 +1,27 @@
+Scenario 1: Normal (speed 60 km/h, so 1 km = 1 minute)
+
+Routes from the depot (node 0):
+camp 1:  5 min  path 0 -> 1
+camp 2:  6 min  path 0 -> 2
+camp 3: 10 min  path 0 -> 1 -> 3
+camp 4: 11 min  path 0 -> 1 -> 4
+camp 5: 12 min  path 0 -> 2 -> 5
+camp 6: 16 min  path 0 -> 1 -> 3 -> 6
+
+Dijkstra picks the nodes in this order: 0, 1, 2, 3, 4, 5, 6
+
+Incoming queue, front to back: requests 1, 2, 3, 4, 5, 6
+After Process incoming, ranked order: 3, 6, 2, 4, 1, 5
+Reasons: 3 over 6 = arrival, 6 over 2 = families, 2 over 4 = urgency, 4 over 1 = quantity, 1 over 5 = urgency
+
+Handle next, six times (depot stock starts at 1000 of each):
+1. request 3 -> camp 3, medicine 20, route 0 -> 1 -> 3, 10 min
+2. request 6 -> camp 2, medicine 20, route 0 -> 2, 6 min
+3. request 2 -> camp 2, water 200, route 0 -> 2, 6 min
+4. request 4 -> camp 1, food 80, route 0 -> 1, 5 min
+5. request 1 -> camp 1, food 50, route 0 -> 1, 5 min
+6. request 5 -> camp 4, water 500, route 0 -> 1 -> 4, 11 min
+A seventh Handle next reports that there are no active requests.
+Final depot stock: food 870, water 300, medicine 960
+Delivery log: 6 records
+Camp 1 received food 130. Camp 2 received water 200 and medicine 20. Camp 3 received medicine 20. Camp 4 received water 500.

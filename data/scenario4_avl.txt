@@ -1,0 +1,16 @@
+# Scenario 4: AVL demo. Camps are inserted in the order 10, 20, 30, 40, 50, 25 and cause rotations.
+depot 0 0
+speed 60
+stock 1000 1000 1000
+camp 10 Camp10 3 4 50
+camp 20 Camp20 6 8 50
+camp 30 Camp30 9 12 50
+camp 40 Camp40 12 16 50
+camp 50 Camp50 15 20 50
+camp 25 Camp25 8 6 50
+road 0 10
+road 0 20
+road 0 30
+road 0 40
+road 0 50
+road 0 25

@@ -25,3 +25,26 @@ void runRequestListTests();
 void runSortingTests();
 void runDeliveryLogTests();
 void runAVLTests();
+void runGraphTests();
+void runDijkstraTests();
+void runEngineTests();
+void runScenarioTests();
+
+#include <string>
+#include <fstream>
+#include <sstream>
+
+inline std::string readTextFile(const char* path) {
+    std::FILE* f = std::fopen(path, "rb");
+    if (!f) return "";
+    std::fseek(f, 0, SEEK_END);
+    long size = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    std::string buffer;
+    if (size > 0) {
+        buffer.resize(size);
+        std::fread(&buffer[0], 1, size, f);
+    }
+    std::fclose(f);
+    return buffer;
+}
