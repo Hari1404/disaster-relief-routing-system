@@ -1,4 +1,8 @@
+# Build output
+run_tests
 run_tests.exe
+run_tests_san
+relief_console
+relief_console.exe
 *.o
 *.obj
-relief_console.exe

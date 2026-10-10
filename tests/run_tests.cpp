@@ -73,8 +73,10 @@ static void runSuite(const char* name, void (*func)()) {
 }
 
 int main() {
-    // from causing a false positive memory leak in the test framework.
-    readTextFile("build_and_test.bat");
+    // Warm-up: use the file, stream and string-conversion code once before the first suite.
+    // The standard library makes small one-time allocations the first time these are used,
+    // and the leak counter in runSuite would report them as leaks.
+    readTextFile("README.md");
     {
         int a; double b; std::string w;
         std::istringstream ss("123 45.6 hello\nworld");
