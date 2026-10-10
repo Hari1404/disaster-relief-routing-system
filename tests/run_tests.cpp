@@ -78,6 +78,7 @@ int main() {
     runSuite("RequestList", runRequestListTests);
     runSuite("Sorting", runSortingTests);
     runSuite("DeliveryLog", runDeliveryLogTests);
+    runSuite("AVL", runAVLTests);
     
     std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
     

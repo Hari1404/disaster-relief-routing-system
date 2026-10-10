@@ -24,3 +24,4 @@ void runQueueTests();
 void runRequestListTests();
 void runSortingTests();
 void runDeliveryLogTests();
+void runAVLTests();

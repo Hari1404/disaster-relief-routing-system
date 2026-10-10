@@ -12,3 +12,14 @@ bool isValidRequest(const Request& r) {
     if (r.resource != ResourceType::Food && r.resource != ResourceType::Water && r.resource != ResourceType::Medicine) return false;
     return true;
 }
+
+// True only if: id >= 1, name not empty, families >= 0, all three received totals >= 0.
+// O(1) time complexity.
+bool isValidCamp(const Camp& c) {
+    if (c.id < 1) return false;
+    if (c.name.empty()) return false;
+    if (c.families < 0) return false;
+    if (c.receivedFood < 0 || c.receivedWater < 0 || c.receivedMedicine < 0) return false;
+    return true;
+}
+

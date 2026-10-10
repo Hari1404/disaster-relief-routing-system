@@ -35,4 +35,22 @@ struct DeliveryRecord {
 // O(1) time complexity.
 bool isValidRequest(const Request& r);
 
+#include <string>
+
+// A relief camp. The AVL tree is keyed by id.
+struct Camp {
+    int         id;                 // unique, >= 1 (0 is reserved for the depot)
+    std::string name;               // not empty
+    double      x;                  // position on the map, in km
+    double      y;                  // position on the map, in km
+    int         families;           // families living in the camp, >= 0
+    int         receivedFood;       // total units delivered so far, >= 0
+    int         receivedWater;
+    int         receivedMedicine;
+};
+
+// True only if: id >= 1, name not empty, families >= 0, all three received totals >= 0.
+bool isValidCamp(const Camp& c);
+
 #endif // TYPES_H
+

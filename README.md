@@ -1,6 +1,7 @@
 # ReliefNet - Phase 1
 
 This is the request-handling half of the ReliefNet disaster-relief simulation engine.
+Includes a self-balancing AVL tree for managing disaster relief camps.
 
 ## Build and Run Tests (Windows)
 
@@ -14,7 +15,8 @@ This will run the following compiler command:
 
 ```cmd
 g++ -std=c++17 -Wall -Wextra -g -I engine -I tests ^
-  engine\Types.cpp engine\Queue.cpp engine\RequestList.cpp engine\DeliveryLog.cpp engine\Sorting.cpp ^
+  engine\Types.cpp engine\Queue.cpp engine\RequestList.cpp engine\DeliveryLog.cpp engine\Sorting.cpp engine\AVLTree.cpp ^
   tests\test_types.cpp tests\test_queue.cpp tests\test_request_list.cpp tests\test_sorting.cpp ^
-  tests\test_delivery_log.cpp tests\run_tests.cpp -o run_tests.exe
+  tests\test_delivery_log.cpp tests\test_avl.cpp tests\run_tests.cpp -o run_tests.exe
 ```
+
