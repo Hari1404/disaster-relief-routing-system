@@ -140,7 +140,7 @@ bool Graph::removeEdgeFromVertex(VertexNode* v, int to) {
 }
 
 bool Graph::addEdge(int a, int b, double distanceKm) {
-    if (a == b || distanceKm <= 0) return false;
+    if (a == b || distanceKm <= 0 || !std::isfinite(distanceKm)) return false;
 
     VertexNode* vA = findVertex(a);
     VertexNode* vB = findVertex(b);
@@ -179,7 +179,7 @@ bool Graph::removeEdge(int a, int b) {
 }
 
 bool Graph::setEdgeDistance(int a, int b, double distanceKm) {
-    if (distanceKm <= 0) return false;
+    if (distanceKm <= 0 || !std::isfinite(distanceKm)) return false;
     
     VertexNode* vA = findVertex(a);
     VertexNode* vB = findVertex(b);
@@ -231,7 +231,7 @@ bool Graph::setStatus(int a, int b, RoadStatus s) {
 }
 
 bool Graph::setAverageSpeed(double kmh) {
-    if (kmh <= 0) return false;
+    if (kmh <= 0 || !std::isfinite(kmh)) return false;
     avgSpeed_ = kmh;
     
     VertexNode* v = head_;
@@ -256,8 +256,12 @@ int Graph::computeTime(double distanceKm, RoadStatus s) const {
     if (s == RoadStatus::Slow) {
         speed /= 2.0;
     }
-    int minutes = std::lround(distanceKm / speed * 60.0);
-    return minutes < 1 ? 1 : minutes;
+    double minutes = distanceKm / speed * 60.0;
+    // Compare as a double BEFORE converting to an integer, so a huge value (or inf/NaN)
+    // is clamped instead of overflowing the int. The negated test also catches NaN.
+    if (!(minutes < kMaxRoadMinutes)) return kMaxRoadMinutes;
+    long rounded = std::lround(minutes);
+    return rounded < 1 ? 1 : static_cast<int>(rounded);
 }
 
 bool Graph::getEdge(int a, int b, EdgeInfo& out) const {

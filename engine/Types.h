@@ -49,7 +49,7 @@ struct Camp {
     int         receivedMedicine;
 };
 
-// True only if: id >= 1, name not empty, families >= 0, all three received totals >= 0.
+// True only if: id >= 1, name not empty, x and y finite, families >= 0, all three received totals >= 0.
 bool isValidCamp(const Camp& c);
 
 #endif // TYPES_H

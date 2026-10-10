@@ -1,5 +1,6 @@
 #include "test_helpers.h"
 #include "../engine/Graph.h"
+#include <limits>
 
 void runGraphTests() {
     {
@@ -262,5 +263,47 @@ void runGraphTests() {
         }
         CHECK(g.nodeCount() == 0);
         CHECK(g.edgeCount() == 0);
+    }
+    {
+        // 15. Non-finite values are rejected and change nothing
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        Graph g;
+        g.addNode(1);
+        g.addNode(2);
+        CHECK(!g.addEdge(1, 2, nan));
+        CHECK(!g.addEdge(1, 2, inf));
+        CHECK(g.edgeCount() == 0);
+        CHECK(g.addEdge(1, 2, 5.0));
+
+        CHECK(!g.setEdgeDistance(1, 2, nan));
+        CHECK(!g.setEdgeDistance(1, 2, inf));
+        EdgeInfo e;
+        CHECK(g.getEdge(1, 2, e) && e.distanceKm == 5.0);   // unchanged
+
+        CHECK(!g.setAverageSpeed(nan));
+        CHECK(!g.setAverageSpeed(inf));
+        CHECK(g.averageSpeed() == 40.0);                     // unchanged
+    }
+    {
+        // 16. Travel time is clamped to kMaxRoadMinutes instead of overflowing
+        Graph g;
+        g.addNode(1);
+        g.addNode(2);
+        g.addEdge(1, 2, 5.0);
+
+        CHECK(g.setAverageSpeed(1e-12));   // absurdly slow: 5 km would be about 3e14 minutes
+        CHECK(g.computeTime(5.0, RoadStatus::Open) == Graph::kMaxRoadMinutes);
+        CHECK(g.computeTime(5.0, RoadStatus::Slow) == Graph::kMaxRoadMinutes);
+        CHECK(g.computeTime(1e300, RoadStatus::Open) == Graph::kMaxRoadMinutes);
+        EdgeInfo e;
+        CHECK(g.getEdge(1, 2, e) && e.minutes == Graph::kMaxRoadMinutes);   // stored value is clamped too
+
+        // Just under and just over the cap at a normal speed
+        CHECK(g.setAverageSpeed(60.0));
+        CHECK(g.computeTime(99999.0, RoadStatus::Open) == 99999);
+        CHECK(g.computeTime(100000.0, RoadStatus::Open) == Graph::kMaxRoadMinutes);
+        CHECK(g.computeTime(100001.0, RoadStatus::Open) == Graph::kMaxRoadMinutes);
+        CHECK(g.getEdge(1, 2, e) && e.minutes == 5);   // back to normal once the speed is sane
     }
 }

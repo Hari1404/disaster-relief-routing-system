@@ -118,8 +118,10 @@ OpResult Engine::addCamp(const Camp& c, const std::vector<int>& linkTo) {
 }
 
 OpResult Engine::editCamp(int id, const std::string& name, double x, double y, int families) {
-    if (name.empty() || families < 0) return {Err::Invalid, "Invalid camp data", 0};
-    
+    if (name.empty() || families < 0 || !std::isfinite(x) || !std::isfinite(y)) {
+        return {Err::Invalid, "Invalid camp data", 0};
+    }
+
     Camp c;
     if (!camps_.search(id, c)) return {Err::NotFound, "Camp not found", 0};
     
@@ -199,6 +201,9 @@ OpResult Engine::deleteCamp(int id, bool confirm) {
 }
 
 OpResult Engine::setDepotPosition(double x, double y) {
+    if (!std::isfinite(x) || !std::isfinite(y)) {
+        return {Err::Invalid, "Depot position must be a finite number", 0};
+    }
     std::vector<EdgeInfo> edges;
     graph_.getEdgesOf(0, edges);
     for (const auto& e : edges) {
@@ -263,7 +268,7 @@ OpResult Engine::setRoadStatus(int a, int b, RoadStatus s) {
 
 OpResult Engine::setAverageSpeed(double kmh) {
     if (!graph_.setAverageSpeed(kmh)) {
-        return {Err::Invalid, "Speed must be > 0", 0};
+        return {Err::Invalid, "Speed must be a finite number > 0", 0};
     }
     runDijkstra();
     lastTrace_ = "Average speed set to " + std::to_string(kmh) + " | Dijkstra rerun from depot";

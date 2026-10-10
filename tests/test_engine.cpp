@@ -1,5 +1,6 @@
 #include "test_helpers.h"
 #include "../engine/Engine.h"
+#include <limits>
 
 void runEngineTests() {
     auto setupMiniWorld = [](Engine& e) {
@@ -338,5 +339,43 @@ void runEngineTests() {
         res = e.submitRequest(1, ResourceType::Food, 10, 1, 10);
         CHECK(res.value == 1);
         CHECK(!e.lastTrace().empty());
+    }
+    {
+        // 15. Non-finite numbers are rejected and change nothing
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        Engine e;
+        Camp badX = {1, "Bad", nan, 1.0, 10, 0, 0, 0};
+        Camp badY = {1, "Bad", 1.0, inf, 10, 0, 0, 0};
+        CHECK(e.addCamp(badX, {0}).err == Err::Invalid);
+        CHECK(e.addCamp(badY, {0}).err == Err::Invalid);
+        CHECK(e.campCount() == 0);
+        CHECK(e.roads().empty());
+
+        setupMiniWorld(e);   // camp 1 at (3, 4), camp 2 at (6, 8), depot at (0, 0)
+        CHECK(e.editCamp(1, "C", nan, 4.0, 10).err == Err::Invalid);
+        CHECK(e.editCamp(1, "C", 3.0, -inf, 10).err == Err::Invalid);
+        Camp c;
+        CHECK(e.findCamp(1, c) && c.x == 3.0 && c.y == 4.0 && c.name == "Camp1");
+
+        CHECK(e.setDepotPosition(nan, 0.0).err == Err::Invalid);
+        CHECK(e.setDepotPosition(0.0, inf).err == Err::Invalid);
+        CHECK(e.depotX() == 0.0 && e.depotY() == 0.0);
+
+        CHECK(e.setAverageSpeed(nan).err == Err::Invalid);
+        CHECK(e.setAverageSpeed(inf).err == Err::Invalid);
+        CHECK(e.averageSpeed() == 40.0);
+    }
+    {
+        // 16. An absurdly slow speed gives clamped travel times, not overflow garbage
+        Engine e;
+        setupMiniWorld(e);   // depot - camp 1 - camp 2, two roads of 5 km each
+        CHECK(e.setAverageSpeed(1e-12).ok());
+        auto routes = e.routes();
+        CHECK(routes.size() == 2);
+        if (routes.size() == 2) {
+            CHECK(routes[0].reachable && routes[0].minutes == Graph::kMaxRoadMinutes);
+            CHECK(routes[1].reachable && routes[1].minutes == 2 * Graph::kMaxRoadMinutes);
+        }
     }
 }

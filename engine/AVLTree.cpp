@@ -1,4 +1,5 @@
 #include "AVLTree.h"
+#include <cmath>
 
 // Returns exactly "LL", "RR", "LR" or "RL".
 const char* rotationName(RotationType t) {
@@ -259,9 +260,10 @@ bool AVLTree::search(int id, Camp& out) const {
     return false;
 }
 
-// Updates name, x, y, and families for the given camp id; false if not found or invalid. O(log n)
+// Updates name, x, y, and families for the given camp id; false if not found or invalid
+// (empty name, negative families, or x/y not finite). O(log n)
 bool AVLTree::update(int id, const std::string& name, double x, double y, int families) {
-    if (name.empty() || families < 0) {
+    if (name.empty() || families < 0 || !std::isfinite(x) || !std::isfinite(y)) {
         return false;
     }
     AVLNode* curr = root;

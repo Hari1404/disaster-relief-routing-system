@@ -4,6 +4,7 @@
 #include <string>
 #include <random>
 #include <set>
+#include <limits>
 
 // Builds a valid camp with name "C<id>", x = id, y = 0, families = 10, received totals 0.
 static Camp makeCamp(int id) {
@@ -176,10 +177,13 @@ static void testUpdateAndAddReceived() {
     CHECK(!tree.update(999, "Unknown", 0.0, 0.0, 10));
     CHECK(!tree.update(10, "", 1.0, 1.0, 10));
     CHECK(!tree.update(10, "ValidName", 1.0, 1.0, -1));
+    CHECK(!tree.update(10, "ValidName", std::numeric_limits<double>::quiet_NaN(), 1.0, 10));
+    CHECK(!tree.update(10, "ValidName", 1.0, std::numeric_limits<double>::infinity(), 10));
 
     CHECK(tree.search(10, c));
     CHECK(c.name == "NewCamp");
     CHECK(c.families == 99);
+    CHECK(c.x == 15.5 && c.y == 25.5);   // the rejected updates left the position alone
 
     // 3. addReceived adds up
     CHECK(tree.addReceived(10, ResourceType::Food, 10));

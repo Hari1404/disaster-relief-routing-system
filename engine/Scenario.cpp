@@ -1,4 +1,8 @@
 #include "Engine.h"
+#include <cctype>
+#include <climits>
+#include <cmath>
+#include <cstdlib>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -51,12 +55,16 @@ OpResult Engine::loadScenario(const std::string& text) {
         auto parseDouble = [&](const std::string& s, double& out) {
             char* end = nullptr;
             out = std::strtod(s.c_str(), &end);
-            return end != s.c_str() && *end == '\0';
+            // strtod also accepts "nan" and "inf"; those are not valid map values here.
+            return end != s.c_str() && *end == '\0' && std::isfinite(out);
         };
         auto parseInt = [&](const std::string& s, int& out) {
             char* end = nullptr;
-            out = std::strtol(s.c_str(), &end, 10);
-            return end != s.c_str() && *end == '\0';
+            long v = std::strtol(s.c_str(), &end, 10);
+            if (end == s.c_str() || *end != '\0') return false;
+            if (v < INT_MIN || v > INT_MAX) return false;   // would be silently truncated otherwise
+            out = static_cast<int>(v);
+            return true;
         };
 
         if (cmd == "depot") {

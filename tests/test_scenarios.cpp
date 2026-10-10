@@ -199,6 +199,14 @@ void runScenarioTests() {
         CHECK(e.loadScenario("request 9 food 10 2 5\n").err == Err::Invalid); // unknown camp
         
         CHECK(e.loadScenario("camp 1 A 1 1 1\nrequest 1 rice 10 2 5\n").err == Err::Invalid); // unknown res
+
+        // "nan" and "inf" parse as numbers in C, but are not valid map values
+        CHECK(e.loadScenario("camp 1 A nan 4 5\n").err == Err::Invalid);
+        CHECK(e.loadScenario("camp 1 A nan 4 5\n").message.find("line 1:") == 0);
+        CHECK(e.loadScenario("camp 1 A 3 inf 5\n").err == Err::Invalid);
+        CHECK(e.loadScenario("depot inf 0\n").err == Err::Invalid);
+        CHECK(e.loadScenario("speed nan\n").err == Err::Invalid);
+        CHECK(e.loadScenario("camp 99999999999 A 1 1 1\n").err == Err::Invalid); // too big for an int
         
         // ensure valid ignores blanks
         CHECK(e.loadScenario("\n# comment\ndepot 0 0\n").ok());
