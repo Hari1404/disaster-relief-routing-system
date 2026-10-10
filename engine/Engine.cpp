@@ -343,37 +343,50 @@ OpResult Engine::handleNext() {
     
     std::vector<Request> active = activeRequests_.toVector();
     Request targetReq;
-    bool foundReachable = false;
+    bool foundServiceable = false;
+    bool sawOutOfStock = false;
+    std::string firstOutOfStockName;
+
+    auto stockOf = [this](ResourceType t) {
+        return t == ResourceType::Food ? stock_.food
+             : t == ResourceType::Water ? stock_.water
+             : stock_.medicine;
+    };
+    auto nameOf = [](ResourceType t) -> const char* {
+        return t == ResourceType::Food ? "food"
+             : t == ResourceType::Water ? "water"
+             : "medicine";
+    };
     
     for (const auto& r : active) {
-        if (dijkstra_.isReachable(r.campId)) {
-            targetReq = r;
-            foundReachable = true;
-            break;
+        // Serve the first request in ranked order that can be served right now:
+        // its camp must be reachable AND the depot must still hold some of its resource.
+        // A request that cannot be served is skipped, so it never blocks the ones behind it.
+        if (!dijkstra_.isReachable(r.campId)) continue;
+        if (stockOf(r.resource) == 0) {
+            if (!sawOutOfStock) {
+                sawOutOfStock = true;
+                firstOutOfStockName = nameOf(r.resource);
+            }
+            continue;
         }
+        targetReq = r;
+        foundServiceable = true;
+        break;
     }
     
-    if (!foundReachable) {
+    if (!foundServiceable) {
+        // Nothing can be served. If at least one request had a reachable camp but no stock,
+        // report the stock-out (it is the more useful fact); otherwise every camp is cut off.
+        if (sawOutOfStock) {
+            return {Err::OutOfStock, "Out of stock for " + firstOutOfStockName, 0};
+        }
         return {Err::Unreachable, "Unreachable: alternate delivery needed", 0};
     }
     
-    int stockAvailable = 0;
-    std::string rName;
-    if (targetReq.resource == ResourceType::Food) {
-        stockAvailable = stock_.food;
-        rName = "food";
-    } else if (targetReq.resource == ResourceType::Water) {
-        stockAvailable = stock_.water;
-        rName = "water";
-    } else {
-        stockAvailable = stock_.medicine;
-        rName = "medicine";
-    }
-    
-    if (stockAvailable == 0) {
-        return {Err::OutOfStock, "Out of stock for " + rName, 0};
-    }
-    
+    // Never 0 here: the loop above skips every request whose resource is out of stock.
+    int stockAvailable = stockOf(targetReq.resource);
+
     int delivered = (targetReq.quantity < stockAvailable) ? targetReq.quantity : stockAvailable;
     int mins = dijkstra_.getDistance(targetReq.campId);
     std::vector<int> path;

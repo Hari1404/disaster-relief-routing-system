@@ -378,4 +378,74 @@ void runEngineTests() {
             CHECK(routes[1].reachable && routes[1].minutes == 2 * Graph::kMaxRoadMinutes);
         }
     }
+    {
+        // 17. handleNext skips a request whose resource is out of stock
+        Engine e;
+        e.setAverageSpeed(60.0);
+        setupMiniWorld(e);
+        e.setStock(0, 100, 100);
+        e.submitRequest(1, ResourceType::Food, 10, 4, 10);    // id 1: ranked first, but food is 0
+        e.submitRequest(2, ResourceType::Water, 10, 1, 10);   // id 2: ranked second, water in stock
+        e.processIncoming();
+        auto before = e.rankedRequests();
+        CHECK(before.size() == 2 && before[0].req.id == 1);
+
+        auto res = e.handleNext();
+        CHECK(res.ok() && res.value == 10);
+        auto log = e.deliveries();
+        CHECK(log.size() == 1);
+        if (log.size() == 1) {
+            CHECK(log[0].requestId == 2 && log[0].resource == ResourceType::Water);
+        }
+        CHECK(e.stock().water == 90 && e.stock().food == 0);
+
+        // The food request is still waiting, untouched
+        auto ranked = e.rankedRequests();
+        CHECK(ranked.size() == 1 && ranked[0].req.id == 1 && ranked[0].req.quantity == 10);
+
+        // Only the out-of-stock request is left: OutOfStock, and nothing changes
+        res = e.handleNext();
+        CHECK(res.err == Err::OutOfStock);
+        CHECK(res.message == "Out of stock for food");
+        CHECK(e.deliveries().size() == 1);
+        CHECK(e.rankedRequests().size() == 1);
+
+        // Restocking lets it through
+        e.setStock(50, 90, 100);
+        res = e.handleNext();
+        CHECK(res.ok() && res.value == 10);
+        CHECK(e.rankedRequests().empty());
+    }
+    {
+        // 18. Unreachable and out-of-stock requests are both skipped, and the message says why
+        Engine e;
+        e.setAverageSpeed(60.0);
+        setupMiniWorld(e);
+        Camp c3 = {3, "Camp3", 20.0, 20.0, 100, 0, 0, 0};
+        e.addCamp(c3, {});                                       // no road: unreachable
+        e.setStock(100, 0, 100);
+        e.submitRequest(3, ResourceType::Food, 10, 4, 10);       // id 1: rank 1, camp unreachable
+        e.submitRequest(1, ResourceType::Water, 10, 3, 10);      // id 2: rank 2, water is 0
+        e.submitRequest(2, ResourceType::Medicine, 10, 1, 10);   // id 3: rank 3, can be served
+        e.processIncoming();
+
+        auto res = e.handleNext();
+        CHECK(res.ok());
+        auto log = e.deliveries();
+        CHECK(log.size() == 1 && log[0].requestId == 3);
+
+        // Left: one unreachable, one out of stock. The stock-out is what gets reported.
+        res = e.handleNext();
+        CHECK(res.err == Err::OutOfStock);
+        CHECK(res.message == "Out of stock for water");
+        CHECK(e.rankedRequests().size() == 2);
+
+        // Restock water: that request is served, and only the unreachable one remains
+        e.setStock(100, 50, 100);
+        CHECK(e.handleNext().ok());
+        res = e.handleNext();
+        CHECK(res.err == Err::Unreachable);
+        CHECK(res.message.find("Unreachable: alternate delivery needed") == 0);
+        CHECK(e.rankedRequests().size() == 1);
+    }
 }

@@ -314,8 +314,8 @@ All functions that can fail **check everything first and change nothing if any c
 **`handleNext()`** serves one request. Steps:
 1. Active list empty gives `Empty`.
 2. Rerun Dijkstra (so the routes are fresh).
-3. Walk the active list **in ranked order** (use `toVector()`). Pick the **first** request whose camp is reachable from the depot. In the normal case this is the top of the list (`getTop`). If **no** request has a reachable camp, give `Unreachable` with a message that **starts with the exact text** `Unreachable: alternate delivery needed`. Nothing changes.
-4. If the depot stock for that request's resource is 0, give `OutOfStock` (message names the resource). Nothing changes.
+3. Walk the active list **in ranked order** (use `toVector()`). Pick the **first** request that can be served now: its camp is reachable from the depot **and** the depot stock of its resource is above 0. A request that fails either test is skipped, so it never blocks the requests behind it. In the normal case this is the top of the list (`getTop`).
+4. If **no** request can be served: when at least one request had a reachable camp but its resource was out of stock, give `OutOfStock` (message names the resource of the first such request in ranked order, for example `Out of stock for food`). Otherwise every requested camp is unreachable: give `Unreachable` with a message that **starts with the exact text** `Unreachable: alternate delivery needed`. Nothing changes.
 5. `delivered = min(request.quantity, stockOfThatResource)`. Take the route minutes from Dijkstra and the path from `reconstructPath`.
 6. Subtract `delivered` from the depot stock. Call `AVLTree::addReceived` for the camp.
 7. Append a `DeliveryRecord`: `requestId`, `campId`, `resource`, `quantityRequested` = the request's quantity at this moment, `quantityDelivered` = `delivered`, `totalMinutes`, `path`.
