@@ -6,3 +6,9 @@ relief_console
 relief_console.exe
 *.o
 *.obj
+relief_server
+relief_server.exe
+relief_server_san
+run_server_tests
+run_server_tests.exe
+run_server_tests_san

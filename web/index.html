@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReliefNet</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>ReliefNet</h1>
+  <label>Scenario <select id="scenario"></select></label>
+  <button id="load" type="button">Load</button>
+  <label>Average speed <input id="speed" type="number" min="1" step="any"> km/h</label>
+  <button id="setSpeed" type="button">Set speed</button>
+  <button id="reset" type="button">Reset</button>
+  <span id="stock"></span>
+  <span id="msg" role="status"></span>
+</header>
+
+<aside id="camps">
+  <h2>Camps</h2>
+  <form id="findForm" class="row">
+    <input id="find" type="number" step="1" placeholder="Camp ID" aria-label="Camp ID to search for">
+    <button>Search</button>
+  </form>
+  <table id="campTable"></table>
+  <h3 id="ctitle">Add camp</h3>
+  <p class="hint">Click empty space on the map to fill in the position.</p>
+  <form id="campForm" class="f">
+    <label>ID <input id="cid" type="number" step="1"></label>
+    <label>Name <input id="cname" maxlength="40"></label>
+    <label>X (km) <input id="cx" type="number" step="any"></label>
+    <label>Y (km) <input id="cy" type="number" step="any"></label>
+    <label>Families <input id="cfam" type="number" step="1" min="0" value="10"></label>
+    <label>Roads to <input id="clinks" placeholder="ids, 0 = depot"></label>
+    <button id="cadd">Add camp</button>
+    <button id="ccancel" type="button" hidden>Cancel</button>
+  </form>
+</aside>
+
+<main id="mapbox">
+  <svg id="map" viewBox="0 0 800 520" role="img" aria-label="Map of camps and roads"></svg>
+  <div id="routeNote"></div>
+  <div class="hint">Click empty space to place a camp. Click a road to cycle open, slow, blocked. Click a camp to search for it and show its route.</div>
+</main>
+
+<aside id="requests">
+  <h2>Requests</h2>
+  <form id="reqForm" class="f">
+    <label>Camp <select id="rcamp"></select></label>
+    <label>Resource <select id="rres"><option>food</option><option>water</option><option>medicine</option></select></label>
+    <label>Quantity <input id="rqty" type="number" step="1" min="1" value="50"></label>
+    <label>Urgency <select id="rurg"><option value="4">4 Critical</option><option value="3">3 High</option><option value="2" selected>2 Medium</option><option value="1">1 Low</option></select></label>
+    <label>Families <input id="rfam" type="number" step="1" min="1" value="10"></label>
+    <button>Submit request</button>
+  </form>
+  <div class="row"><button id="process" type="button">Process incoming</button><button id="handle" type="button">Handle next</button></div>
+  <h3>Incoming queue, oldest first</h3>
+  <ul id="queue"></ul>
+  <h3>Ranked active list</h3>
+  <ol id="active"></ol>
+</aside>
+
+<section id="ds">
+  <div id="trace"></div>
+  <nav id="tabs"></nav>
+  <div id="tab"></div>
+</section>
+<script src="app.js"></script>
+</body>
+</html>
