@@ -55,7 +55,7 @@ road A B                                       a road; its length comes from the
 request CAMP RESOURCE QUANTITY URGENCY FAMILIES
 ```
 
-`RESOURCE` is `food`, `water` or `medicine`. `URGENCY` runs from 1 (low) to 4 (critical). A bad line stops the load with a message like `line 7: unknown command`, and the engine is reset to empty. Values such as `nan` and `inf` are rejected.
+`RESOURCE` is `food`, `water` or `medicine`. `URGENCY` runs from 1 (low) to 4 (critical). A bad line stops the load with a message like `line 7: unknown command`, and the engine is reset to empty. Values such as `nan` and `inf` are rejected, and so is any coordinate outside plus or minus 1,000,000 km.
 
 ## Rules worth knowing
 
@@ -63,4 +63,5 @@ request CAMP RESOURCE QUANTITY URGENCY FAMILIES
 - **Handle next:** serves the first request in ranked order whose camp is reachable and whose resource is in stock. A request that fails either test is skipped and stays in the active list. A partial delivery leaves the remainder in the list.
 - **Travel time:** whole minutes, at least 1 and at most `Graph::kMaxRoadMinutes` (100000) per road. Slow roads run at half speed. Blocked roads are never used.
 - **Dijkstra:** the array version, O(V squared). Route totals are `int`, which is safe for fewer than about 21,000 nodes.
+- **Coordinates** (camps and depot) must be within plus or minus 1,000,000 km, so no road length can overflow. Anything else is refused as invalid.
 - **Camp IDs** start at 1. ID 0 is the depot.

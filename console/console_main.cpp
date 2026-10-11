@@ -113,12 +113,21 @@ int main() {
             std::string linkLine;
             std::getline(std::cin, linkLine);
             std::vector<int> links;
-            if (!linkLine.empty()) {
+            bool linksOk = true;
+            {
+                // Read the line word by word. Every word must be a whole number; one bad word
+                // rejects the whole line instead of silently dropping it and everything after it.
                 std::istringstream ss(linkLine);
-                int link;
-                while (ss >> link) {
+                std::string word;
+                while (ss >> word) {
+                    int link;
+                    if (!parseWholeNumber(word, link)) { linksOk = false; break; }
                     links.push_back(link);
                 }
+            }
+            if (!linksOk) {
+                std::cout << "Links must be whole numbers separated by spaces. Camp not added.\n";
+                continue;
             }
             
             Camp c;
@@ -352,7 +361,7 @@ int main() {
                     for (const auto& r : roads) {
                         std::string status = (r.status == RoadStatus::Open) ? "Open" : 
                                              (r.status == RoadStatus::Blocked) ? "Blocked" : "Slow";
-                        std::printf("%3d - %3d | %6.2f km | %s\n", r.a, r.b, r.distanceKm, status.c_str());
+                        std::printf("%3d - %3d | %6.2f km | %-7s | %d min\n", r.a, r.b, r.distanceKm, status.c_str(), r.minutes);
                     }
                 }
                 else if (sub == "g") {

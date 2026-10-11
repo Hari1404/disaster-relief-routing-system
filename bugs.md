@@ -1,108 +1,34 @@
 # ReliefNet: bug report
 
-**Reviewed:** branch `Graph,-Dijkstra,-Engine,` at commit `c6b70af` (2026-10-11).
-**Platform:** Linux, g++ 13.3, `-std=c++17 -Wall -Wextra`, AddressSanitizer + UBSan.
+**Reviewed:** branch `Graph,-Dijkstra,-Engine,`, first at commit `c6b70af`, then re-checked after
+the Windows fix at `2a8373b` (2026-10-11).
+**Platforms:** Linux (g++ 13.3, `-std=c++17 -Wall -Wextra`, AddressSanitizer + UBSan) and Windows
+(`build_and_test.bat`, run by the author on the earlier fix).
 
 ## Summary
 
 The core data structures (queue, request list, merge sort, AVL tree, graph, Dijkstra)
-are correct. No bug was found in them. The open bugs are all at the edges: input
-validation, unchecked return values, the console, and one piece of stale state.
+are correct. No bug was found in them. Every bug found was at the edges: input validation,
+unchecked return values, the console, and one piece of stale state.
 
 | ID | Severity | Status | Title |
 |----|----------|--------|-------|
-| BUG-1 | Medium | **Open** | Console silently drops invalid link tokens when adding a camp |
-| BUG-2 | Medium | **Open** | `Engine` ignores `addEdge` / `setEdgeDistance` failures (huge coordinates) |
-| BUG-3 | Low | **Open** | Console roads view omits travel minutes (spec requires them) |
-| BUG-4 | Low | **Open** | `lastRotations()` is stale after `reset()` |
-| BUG-5 | Low | **Open** | Camp received totals can overflow `int` (undefined behaviour) |
-| BUG-6 | Cosmetic | **Open** | `deleteCamp(-5)` says "Cannot delete depot" |
+| BUG-1 | Medium | Fixed | Console silently dropped invalid link tokens when adding a camp |
+| BUG-2 | Medium | Fixed | `Engine` ignored `addEdge` / `setEdgeDistance` failures (huge coordinates) |
+| BUG-3 | Low | Fixed | Console roads view omitted travel minutes (spec requires them) |
+| BUG-4 | Low | Fixed | `lastRotations()` was stale after `reset()` |
+| BUG-5 | Low | Fixed | Camp received totals could overflow `int` (undefined behaviour) |
+| BUG-6 | Cosmetic | Fixed | `deleteCamp(-5)` said "Cannot delete depot" |
 | BUG-7 | Cosmetic | **Open** | Console input handling: trailing space, CRLF, `input.txt` |
 | FIXED-1 | Medium | Fixed | NaN / infinity accepted as speed, coordinates, depot position |
 | FIXED-2 | Medium | Fixed | `int` overflow in travel minutes and in Dijkstra's running total |
-| FIXED-3 | Medium | Fixed | Scenario parser truncated large integers (`strtol` to `int`) |
+| FIXED-3 | Medium | Fixed | Scenario parser truncated large integers (**also needed a Windows fix**, see below) |
 | FIXED-4 | Medium | Fixed | An out-of-stock request blocked every request behind it |
 | FIXED-5 | Low | Fixed | `Scenario.cpp` used `isspace`/`strtod`/`strtol` without their headers |
 
 ---
 
-## Open bugs
-
-### BUG-1 (Medium): Console silently drops invalid link tokens
-
-**Where:** `console/console_main.cpp:119`, `while (ss >> link)`.
-
-**What happens:** The loop stops at the first token that is not a number and ignores
-the rest. The camp is still added and the console says "Camp added".
-
-**Repro (menu 2, Links prompt):** add camp 1 at (3,4), then add camp 2 with links
-`0 x 1`. Camp 2 gets a road to the depot only. The link to camp 1 is lost with no
-warning. Menu 13, then f, shows only `0 - 2`.
-
-**Fix:** after the loop, check that the whole line was consumed (`ss.eof()`, not
-`ss.fail()`). If not, print "Links must be numbers" and return to the menu without
-calling `addCamp`.
-
-### BUG-2 (Medium): `Engine` ignores `addEdge` / `setEdgeDistance` failures
-
-**Where:** `engine/Engine.cpp` lines 97 (`addCamp`), 153 (`editCamp`), 224
-(`setDepotPosition`) and 241 (`addRoad`).
-
-**Background:** The finite-number fix (FIXED-1) made `Graph::addEdge` and
-`Graph::setEdgeDistance` refuse an infinite distance. That is correct, but a camp at
-a huge finite coordinate such as `1e200` has a squared distance of `1e400`, which
-overflows to infinity inside `distanceBetween`. `Engine` never checks the return
-values, so three things go wrong silently:
-
-| Case | Repro | Result |
-|------|-------|--------|
-| A. `addCamp` | `Camp{1,"far",1e200,0,10,0,0,0}` linked to `{0}` | Returns ok, `value` = 1 road created. Actually 0 roads exist and camp 1 is unreachable. |
-| B. `addRoad` | two camps at x = +1e200 and -1e200, then `addRoad(1,2)` | Returns `Duplicate`, "Road already exists". The real reason is an invalid distance. |
-| C. `editCamp` | move linked camp 1 from (3,4) to (1e200, 0) | Returns ok. The road still says 5 km / 8 min while the camp is 1e200 km away (stale data). |
-
-**Fix (root cause):** bound coordinates, for example `|x|, |y| <= 1e6` km, in
-`isValidCamp`, `AVLTree::update`, `Engine::editCamp` and `Engine::setDepotPosition`.
-Then no distance can overflow. Also check the return value of `addEdge` /
-`setEdgeDistance` and return `Err::Invalid` instead of dropping the failure.
-
-### BUG-3 (Low): Console roads view omits travel minutes
-
-**Where:** `console/console_main.cpp:355`.
-
-**What happens:** Menu 13, then f, prints `a - b | km | status`. The spec
-(`docs/PHASE_2B_SPEC.md`, console section) says the roads view shows
-`a, b, km, status, minutes`. `EdgeInfo::minutes` is already available.
-
-**Fix:** add `r.minutes` to the `printf` and a `%d min` column.
-
-### BUG-4 (Low): `lastRotations()` is stale after `reset()`
-
-**Where:** `engine/AVLTree.cpp:24`, `AVLTree::clear()`.
-
-**What happens:** `clear()` resets the root and the count but not `rotations`. After
-adding camps 10, 20, 30 (one RR rotation) and calling `Engine::reset()`,
-`lastRotations()` still returns that rotation while `campCount()` is 0.
-
-**Fix:** add `rotations.clear();` to `AVLTree::clear()`.
-
-### BUG-5 (Low): Camp received totals can overflow `int`
-
-**Where:** `engine/AVLTree.cpp:300` (and the Water/Medicine lines below it),
-`receivedFood += amount`. `Engine::setStock` has no upper bound.
-
-**What happens:** With stock and request quantity both `INT_MAX`, two deliveries
-overflow the camp total. UBSan reports `signed integer overflow`, and the total reads
-back as `-2`. Contrived, but it is undefined behaviour.
-
-**Fix:** cap the total (saturating add), or reject a `setStock` above a sensible
-limit.
-
-### BUG-6 (Cosmetic): Wrong message for negative camp ids
-
-**Where:** `engine/Engine.cpp:163`.
-
-`deleteCamp(-5, false)` returns "Cannot delete depot". Only id 0 is the depot. Use
-"Invalid camp id" for negative ids.
+## Open bug
 
 ### BUG-7 (Cosmetic): Console input handling
 
@@ -120,15 +46,90 @@ limit.
 
 ---
 
-## Fixed on this branch (verified)
+## Fixed bugs
+
+### BUG-1: Console silently dropped invalid link tokens
+
+**Was:** `while (ss >> link)` in the add-camp menu stopped at the first token that was
+not a number and ignored the rest. Entering `0 x 1` printed "Camp added" but only the
+road to the depot existed.
+
+**Fix:** the links line is read word by word and each word goes through the shared
+`parseWholeNumber`. One bad word rejects the whole line with
+"Links must be whole numbers separated by spaces. Camp not added." and the camp is not added.
+Also rejects `1x`, `1.5`, `abc` and numbers too big for an `int`.
+
+**Tests:** `parseWholeNumber` cases in `tests/test_types.cpp`. The console menu itself was
+checked by running the real binary with scripted input, before and after.
+
+### BUG-2: `Engine` ignored `addEdge` / `setEdgeDistance` failures
+
+**Was:** a camp at a huge finite coordinate such as `1e200` has a squared distance of `1e400`,
+which overflows to infinity. The graph correctly refused an infinite road, but `Engine` never
+checked, so `addCamp` reported a road that did not exist, `addRoad` said "Road already exists"
+for an invalid length, and `editCamp` moved a camp while leaving its roads at the old length.
+
+**Fix (root cause):** coordinates are limited to plus or minus 1,000,000 km
+(`kMaxCoordinateKm`, `isValidCoordinate` in `Types.h`). `isValidCamp`, `AVLTree::update`,
+`editCamp` and `setDepotPosition` all use it, so no road length can overflow.
+
+**Fix (all-or-nothing):** `addCamp`, `editCamp` and `setDepotPosition` now work out every road
+length first and change nothing if any length is not finite or not above 0. This also catches
+two different points so close together that the squared distance underflows to 0. The roads
+actually created are counted, so `value` is true. `addRoad` now reports an invalid length as
+`Invalid`, and "Road already exists" only for a real duplicate.
+
+**Tests:** `tests/test_types.cpp`, `tests/test_avl.cpp`, `tests/test_engine.cpp` (blocks 18 to 20)
+and `tests/test_scenarios.cpp`.
+
+### BUG-3: Console roads view omitted travel minutes
+
+**Fix:** menu 13, then f, now prints `a - b | km | status | minutes`
+(for example `0 -   1 |   5.00 km | Open    | 8 min`). Verified by running the real binary.
+
+### BUG-4: `lastRotations()` was stale after `reset()`
+
+**Fix:** `AVLTree::clear()` now also runs `rotations.clear()`.
+
+**Tests:** `tests/test_avl.cpp` and `tests/test_engine.cpp` (block 22).
+
+### BUG-5: Camp received totals could overflow `int`
+
+**Fix:** `AVLTree::addReceived` uses a saturating add, so a total stops at `INT_MAX`
+instead of wrapping (signed overflow is undefined behaviour).
+
+**Tests:** `tests/test_avl.cpp` and `tests/test_engine.cpp` (block 23), run under UBSan.
+
+### BUG-6: Wrong message for negative camp ids
+
+**Fix:** `deleteCamp(0)` still says "Cannot delete depot". A negative id now says
+"Invalid camp id".
+
+**Tests:** `tests/test_engine.cpp` (block 21).
+
+---
+
+## Fixed earlier on this branch
 
 | ID | Commit | What changed |
 |----|--------|--------------|
-| FIXED-1 | `792eb8b` | `isfinite` checks in `isValidCamp`, `AVLTree::update`, `editCamp`, `setDepotPosition`, `Graph::addEdge`, `setEdgeDistance`, `setAverageSpeed`, and the scenario parser. `speed nan`, `speed inf` and `camp 1 A nan 4 10` are now rejected. |
-| FIXED-2 | `792eb8b` | `Graph::computeTime` compares as a `double` first and clamps to `kMaxRoadMinutes` (100000). A 1e12 km road is 100000 minutes instead of 1,056,413,696, and Dijkstra can no longer overflow for fewer than about 21,000 nodes. |
-| FIXED-3 | `792eb8b` | `parseInt` range-checks the `strtol` result. `camp 4294967297 ...` is rejected instead of becoming camp 1. |
-| FIXED-4 | `ade3a3c` | `handleNext` skips a request whose resource is out of stock, the same way it already skipped unreachable camps. Spec updated to match. |
+| FIXED-1 | `792eb8b` | `isfinite` checks in `isValidCamp`, `AVLTree::update`, `editCamp`, `setDepotPosition`, `Graph::addEdge`, `setEdgeDistance`, `setAverageSpeed`, and the scenario parser. `speed nan`, `speed inf` and `camp 1 A nan 4 10` are rejected. |
+| FIXED-2 | `792eb8b` | `Graph::computeTime` compares as a `double` first and clamps to `kMaxRoadMinutes` (100000). Dijkstra cannot overflow for fewer than about 21,000 nodes. |
+| FIXED-3 | `792eb8b`, `2a8373b` | See the Windows note below. |
+| FIXED-4 | `ade3a3c` | `handleNext` skips a request whose resource is out of stock, the same way it skips unreachable camps. Spec updated to match. |
 | FIXED-5 | `792eb8b` | Added `<cctype>`, `<cstdlib>`, `<cmath>`, `<climits>` to `Scenario.cpp`. |
+
+### Note on FIXED-3: it was only fixed on Linux at first
+
+The first fix range-checked `strtol`'s result. That works on Linux, where `long` is 64 bits. On
+Windows `long` is 32 bits, so `strtol` silently saturates a huge value to `INT_MAX` and reports
+the problem only through `errno`. The range check could never fire, and `camp 99999999999 ...`
+was accepted as camp 2147483647. The author's Windows run caught this
+(`test_scenarios.cpp:209`). The first review was done on Linux only, so it was missed.
+
+Fixed in `2a8373b` with `strtoll`. The parser now lives in one place, `parseWholeNumber` in
+`Types.cpp`, used by both the scenario loader and the console. It was tested under an emulation
+of Windows `strtol` (32-bit, saturating) and the old version fails the same test line.
 
 ---
 
@@ -138,22 +139,25 @@ limit.
   `reset()` on any scenario error, so a typo in a scenario file destroys the loaded
   session. Compliant with the spec, but worth knowing.
 - **Scenario files are found relative to the working directory.** Run the console and
-  the tests from the repo root (the new Makefile and README state this).
+  the tests from the repo root (the Makefile and README state this).
 - **Low-urgency starvation** (a known limitation already listed in `PROJECT_PLAN.md`).
+- **Coordinate limit:** plus or minus 1,000,000 km. Far larger than any real map, but it is a
+  deliberate limit, not a bug, so a coordinate beyond it is refused as invalid.
 
 ---
 
 ## How this was verified
 
 - Built with `-Wall -Wextra -fsanitize=address,undefined`. Warnings: none.
-- Existing suite: **33,494 checks, 0 failures**. None of the existing tests exercise
-  BUG-1 to BUG-7.
-- A separate fuzz harness (not committed) ran 150 random engine sessions of 250
+- Test suite: **33,582 checks, 0 failures** on Linux with the sanitizers, and again under the
+  Windows-style `strtol` emulation. The 85 new checks cover BUG-1 to BUG-6.
+  Run `build_and_test.bat` on Windows to confirm the same count there.
+- **Mutation check:** each fix was removed again in a scratch copy and the new tests were confirmed to
+  fail (or UBSan to report) every time: BUG-2 in three places, BUG-4, BUG-5, BUG-6 and the
+  Windows `strtol` problem.
+- The console fixes (BUG-1, BUG-3) were checked by running the real binary with scripted input,
+  before and after.
+- Earlier, a separate fuzz harness (not committed) ran 150 random engine sessions of 250
   operations each. After every step it checked Dijkstra against a Bellman-Ford oracle,
   road lengths against camp positions, stock conservation, sorted order, FIFO order and
-  AVL validity. It also fuzzed the AVL tree, queue, list and merge sort against
-  standard-library oracles. **0 failures, 0 sanitizer reports.**
-- The harness was mutation-tested: two deliberately planted bugs (stale road distance
-  after `editCamp`, queue tail not fixed in `removeByCamp`) were both caught.
-- Each open bug above was reproduced on this branch with a small probe program or the
-  real console binary.
+  AVL validity, with 0 failures and 0 sanitizer reports. That run was on the code before these fixes.

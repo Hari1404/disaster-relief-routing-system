@@ -1,6 +1,5 @@
 #include "Engine.h"
 #include <cctype>
-#include <cerrno>
 #include <climits>
 #include <cmath>
 #include <cstdlib>
@@ -59,18 +58,8 @@ OpResult Engine::loadScenario(const std::string& text) {
             // strtod also accepts "nan" and "inf"; those are not valid map values here.
             return end != s.c_str() && *end == '\0' && std::isfinite(out);
         };
-        auto parseInt = [&](const std::string& s, int& out) {
-            char* end = nullptr;
-            // On Windows `long` is only 32 bits, so strtol would silently saturate at INT_MAX
-            // for a huge value and the range check below could never fire. Use a 64-bit
-            // parse and also reject ERANGE, so the result is the same on every platform.
-            errno = 0;
-            long long v = std::strtoll(s.c_str(), &end, 10);
-            if (end == s.c_str() || *end != '\0') return false;
-            if (errno == ERANGE || v < INT_MIN || v > INT_MAX) return false;   // would be truncated otherwise
-            out = static_cast<int>(v);
-            return true;
-        };
+        // Shared with the console (see parseWholeNumber in Types.cpp); safe on 32-bit-long platforms.
+        auto parseInt = [&](const std::string& s, int& out) { return parseWholeNumber(s, out); };
 
         if (cmd == "depot") {
             if (words.size() != 3) return fail("wrong number of words");

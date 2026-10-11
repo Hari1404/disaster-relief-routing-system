@@ -675,7 +675,40 @@ static void testRandomizedOracle() {
     }
 }
 
+// Regression tests: stale rotations after clear (BUG-4), received totals that must not overflow (BUG-5),
+// and update() refusing coordinates outside the allowed range (BUG-2).
+static void testClearAndSaturation() {
+    AVLTree tree;
+    for (int id : {10, 20, 30}) tree.insert(makeCamp(id));
+    CHECK(!tree.lastRotations().empty());     // 10, 20, 30 in order forces one rotation
+    tree.clear();
+    CHECK(tree.count() == 0);
+    CHECK(tree.lastRotations().empty());      // the old rotation must not survive a clear
+
+    const int big = std::numeric_limits<int>::max();
+    tree.insert(makeCamp(10));
+    CHECK(tree.addReceived(10, ResourceType::Food, big));
+    CHECK(tree.addReceived(10, ResourceType::Food, big));       // would overflow without the cap
+    CHECK(tree.addReceived(10, ResourceType::Food, 1));
+    CHECK(tree.addReceived(10, ResourceType::Water, big));
+    CHECK(tree.addReceived(10, ResourceType::Water, 5));
+    CHECK(tree.addReceived(10, ResourceType::Medicine, big - 1));
+    CHECK(tree.addReceived(10, ResourceType::Medicine, 10));
+    Camp c;
+    CHECK(tree.search(10, c));
+    CHECK(c.receivedFood == big && c.receivedWater == big && c.receivedMedicine == big);
+
+    // Moving a camp out of the allowed range is refused and changes nothing
+    Camp before;
+    CHECK(tree.search(10, before));
+    CHECK(!tree.update(10, "moved", 1e200, 0.0, 5));
+    CHECK(!tree.update(10, "moved", 0.0, 1000001.0, 5));
+    CHECK(tree.search(10, c) && c.x == before.x && c.y == before.y && c.name == before.name);
+    CHECK(tree.update(10, "moved", 1000000.0, -1000000.0, 5));  // exactly on the limit is fine
+}
+
 void runAVLTests() {
+    testClearAndSaturation();
     testCampValidity();
     testBasics();
     testUpdateAndAddReceived();

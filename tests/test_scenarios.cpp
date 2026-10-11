@@ -210,6 +210,12 @@ void runScenarioTests() {
         CHECK(e.loadScenario("camp 2147483648 A 1 1 1\n").err == Err::Invalid);   // INT_MAX + 1
         CHECK(e.loadScenario("camp -2147483649 A 1 1 1\n").err == Err::Invalid);  // INT_MIN - 1
         CHECK(e.loadScenario("camp 99999999999999999999 A 1 1 1\n").err == Err::Invalid); // beyond even 64 bits
+
+        // coordinates beyond +/-1,000,000 km are rejected (BUG-2), exactly on the limit is fine
+        CHECK(e.loadScenario("camp 1 A 1e200 4 5\n").err == Err::Invalid);
+        CHECK(e.loadScenario("camp 1 A 3 -1000001 5\n").err == Err::Invalid);
+        CHECK(e.loadScenario("depot 1e7 0\n").err == Err::Invalid);
+        CHECK(e.loadScenario("camp 1 A 1000000 -1000000 5\n").ok());
         
         // ensure valid ignores blanks
         CHECK(e.loadScenario("\n# comment\ndepot 0 0\n").ok());

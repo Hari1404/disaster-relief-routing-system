@@ -448,4 +448,91 @@ void runEngineTests() {
         CHECK(res.message.find("Unreachable: alternate delivery needed") == 0);
         CHECK(e.rankedRequests().size() == 1);
     }
+    {
+        // 18. BUG-2: coordinates must stay within +/-1,000,000 km, so a road length can never overflow
+        Engine e;
+        CHECK(e.addCamp({1, "far", 1e200, 0.0, 10, 0, 0, 0}, {0}).err == Err::Invalid);
+        CHECK(e.addCamp({1, "far", 1000001.0, 0.0, 10, 0, 0, 0}, {0}).err == Err::Invalid);
+        CHECK(e.campCount() == 0 && e.roads().empty());          // nothing left behind
+
+        // exactly on the limit is fine, and the number of roads reported is the real number
+        OpResult r = e.addCamp({1, "edge", 1000000.0, 0.0, 10, 0, 0, 0}, {0});
+        CHECK(r.ok() && r.value == 1 && e.roads().size() == 1);
+
+        // the longest possible road (corner to corner, about 2.83 million km) is accepted;
+        // a genuine duplicate is still reported as a duplicate
+        Engine e2;
+        e2.addCamp({1, "A", 1000000.0, 1000000.0, 1, 0, 0, 0}, {});
+        e2.addCamp({2, "B", -1000000.0, -1000000.0, 1, 0, 0, 0}, {});
+        CHECK(e2.addRoad(1, 2).ok());
+        CHECK(e2.addRoad(1, 2).err == Err::Duplicate);
+
+        // two different points so close that their squared distance underflows to 0: refused, camp not added
+        Engine e3;
+        CHECK(e3.addCamp({1, "tiny", 1e-200, 0.0, 10, 0, 0, 0}, {0}).err == Err::Invalid);
+        CHECK(e3.campCount() == 0 && e3.roads().empty());
+    }
+    {
+        // 19. BUG-2: editCamp is all-or-nothing, so the camp never moves while its roads keep stale lengths
+        Engine e;
+        setupMiniWorld(e);   // camp 1 at (3, 4), camp 2 at (6, 8); roads 0-1 and 1-2, both 5 km
+        CHECK(e.editCamp(1, "Camp1", 1e200, 0.0, 100).err == Err::Invalid);
+        CHECK(e.editCamp(1, "Camp1", 1e-200, 0.0, 100).err == Err::Invalid);   // road 0-1 would be length 0
+        Camp c;
+        CHECK(e.findCamp(1, c) && c.x == 3.0 && c.y == 4.0);
+        auto roads = e.roads();
+        CHECK(roads.size() == 2);
+        for (const auto& rd : roads) CHECK(rd.distanceKm == 5.0);
+
+        // a valid move updates both roads: camp 1 to (6, 0) is 6 km from the depot and 8 km from camp 2
+        CHECK(e.editCamp(1, "Camp1", 6.0, 0.0, 100).ok());
+        roads = e.roads();
+        CHECK(roads.size() == 2);
+        for (const auto& rd : roads) CHECK(rd.distanceKm == ((rd.a == 0 || rd.b == 0) ? 6.0 : 8.0));
+    }
+    {
+        // 20. BUG-2: the depot cannot be moved out of range either
+        Engine e;
+        setupMiniWorld(e);
+        CHECK(e.setDepotPosition(1e200, 0.0).err == Err::Invalid);
+        CHECK(e.setDepotPosition(0.0, -1000001.0).err == Err::Invalid);
+        CHECK(e.depotX() == 0.0 && e.depotY() == 0.0);
+        for (const auto& rd : e.roads()) CHECK(rd.distanceKm == 5.0);
+        CHECK(e.setDepotPosition(-1000000.0, 1000000.0).ok());
+    }
+    {
+        // 21. BUG-6: a negative camp id is not "the depot"
+        Engine e;
+        setupMiniWorld(e);
+        OpResult r = e.deleteCamp(-5, false);
+        CHECK(r.err == Err::Invalid && r.message == "Invalid camp id");
+        r = e.deleteCamp(-1, true);
+        CHECK(r.err == Err::Invalid && r.message == "Invalid camp id");
+        r = e.deleteCamp(0, false);
+        CHECK(r.err == Err::Invalid && r.message == "Cannot delete depot");
+        CHECK(e.campCount() == 2);
+    }
+    {
+        // 22. BUG-4: no stale AVL rotation report after a reset
+        Engine e;
+        for (int id : {10, 20, 30}) e.addCamp({id, "n", (double)id, 0.0, 1, 0, 0, 0}, {0});
+        CHECK(!e.lastRotations().empty());
+        e.reset();
+        CHECK(e.campCount() == 0);
+        CHECK(e.lastRotations().empty());
+    }
+    {
+        // 23. BUG-5: a camp's received total stops at INT_MAX instead of overflowing
+        Engine e;
+        setupMiniWorld(e);
+        const int big = std::numeric_limits<int>::max();
+        for (int i = 0; i < 2; ++i) {
+            e.setStock(big, 0, 0);
+            CHECK(e.submitRequest(1, ResourceType::Food, big, 4, 5).ok());
+            CHECK(e.processIncoming().ok());
+            CHECK(e.handleNext().ok());
+        }
+        Camp c;
+        CHECK(e.findCamp(1, c) && c.receivedFood == big);
+    }
 }

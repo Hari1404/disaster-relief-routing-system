@@ -49,8 +49,21 @@ struct Camp {
     int         receivedMedicine;
 };
 
-// True only if: id >= 1, name not empty, x and y finite, families >= 0, all three received totals >= 0.
+// Largest allowed map coordinate, in km (so |x| and |y| are at most 1,000,000 km).
+// Keeping coordinates inside this range means no road length can overflow to infinity.
+constexpr double kMaxCoordinateKm = 1.0e6;
+
+// True only if v is a finite number with |v| <= kMaxCoordinateKm. Rejects NaN and infinity. O(1)
+bool isValidCoordinate(double v);
+
+// True only if: id >= 1, name not empty, x and y valid coordinates (see isValidCoordinate),
+// families >= 0, all three received totals >= 0.
 bool isValidCamp(const Camp& c);
+
+// Parses s as a whole decimal number that fits in an int. Returns false (and leaves out unchanged)
+// for an empty string, trailing characters ("12x"), or a value outside the int range, even when the
+// platform's own `long` is only 32 bits (Windows). Used by the scenario loader and the console. O(length)
+bool parseWholeNumber(const std::string& s, int& out);
 
 #endif // TYPES_H
 
