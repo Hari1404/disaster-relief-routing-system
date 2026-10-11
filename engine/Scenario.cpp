@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include <cctype>
+#include <cerrno>
 #include <climits>
 #include <cmath>
 #include <cstdlib>
@@ -60,9 +61,13 @@ OpResult Engine::loadScenario(const std::string& text) {
         };
         auto parseInt = [&](const std::string& s, int& out) {
             char* end = nullptr;
-            long v = std::strtol(s.c_str(), &end, 10);
+            // On Windows `long` is only 32 bits, so strtol would silently saturate at INT_MAX
+            // for a huge value and the range check below could never fire. Use a 64-bit
+            // parse and also reject ERANGE, so the result is the same on every platform.
+            errno = 0;
+            long long v = std::strtoll(s.c_str(), &end, 10);
             if (end == s.c_str() || *end != '\0') return false;
-            if (v < INT_MIN || v > INT_MAX) return false;   // would be silently truncated otherwise
+            if (errno == ERANGE || v < INT_MIN || v > INT_MAX) return false;   // would be truncated otherwise
             out = static_cast<int>(v);
             return true;
         };

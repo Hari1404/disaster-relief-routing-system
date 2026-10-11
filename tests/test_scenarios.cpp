@@ -207,6 +207,9 @@ void runScenarioTests() {
         CHECK(e.loadScenario("depot inf 0\n").err == Err::Invalid);
         CHECK(e.loadScenario("speed nan\n").err == Err::Invalid);
         CHECK(e.loadScenario("camp 99999999999 A 1 1 1\n").err == Err::Invalid); // too big for an int
+        CHECK(e.loadScenario("camp 2147483648 A 1 1 1\n").err == Err::Invalid);   // INT_MAX + 1
+        CHECK(e.loadScenario("camp -2147483649 A 1 1 1\n").err == Err::Invalid);  // INT_MIN - 1
+        CHECK(e.loadScenario("camp 99999999999999999999 A 1 1 1\n").err == Err::Invalid); // beyond even 64 bits
         
         // ensure valid ignores blanks
         CHECK(e.loadScenario("\n# comment\ndepot 0 0\n").ok());
