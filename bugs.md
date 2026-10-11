@@ -1,7 +1,7 @@
 # ReliefNet: bug report
 
 **Reviewed:** branch `Graph,-Dijkstra,-Engine,`, first at commit `c6b70af`, then re-checked after
-the Windows fix at `2a8373b` (2026-10-11).
+the Windows fix at `2a8373b` and again with BUG-7 fixed (2026-10-11).
 **Platforms:** Linux (g++ 13.3, `-std=c++17 -Wall -Wextra`, AddressSanitizer + UBSan) and Windows
 (`build_and_test.bat`, run by the author on the earlier fix).
 
@@ -19,7 +19,7 @@ unchecked return values, the console, and one piece of stale state.
 | BUG-4 | Low | Fixed | `lastRotations()` was stale after `reset()` |
 | BUG-5 | Low | Fixed | Camp received totals could overflow `int` (undefined behaviour) |
 | BUG-6 | Cosmetic | Fixed | `deleteCamp(-5)` said "Cannot delete depot" |
-| BUG-7 | Cosmetic | **Open** | Console input handling: trailing space, CRLF, `input.txt` |
+| BUG-7 | Cosmetic | Fixed | Console input handling: trailing space, CRLF, `input.txt` |
 | FIXED-1 | Medium | Fixed | NaN / infinity accepted as speed, coordinates, depot position |
 | FIXED-2 | Medium | Fixed | `int` overflow in travel minutes and in Dijkstra's running total |
 | FIXED-3 | Medium | Fixed | Scenario parser truncated large integers (**also needed a Windows fix**, see below) |
@@ -28,21 +28,9 @@ unchecked return values, the console, and one piece of stale state.
 
 ---
 
-## Open bug
+## Open bugs
 
-### BUG-7 (Cosmetic): Console input handling
-
-**Where:** `console/console_main.cpp` (`readInt`, `readDouble`) and `input.txt`.
-
-- A trailing space (`13 `) is rejected as "Not a valid number", because the parse
-  requires `ss.eof()`.
-- On Linux and macOS, an input file with CRLF line endings fails for the same reason
-  (`\r` is left in the line).
-- `input.txt` ends with `d` then `0`. The `0` is read inside the data-structures
-  sub-menu, which only exits on a blank line, so the console prints "Invalid option."
-  Add a blank line before the final `0`.
-
-**Fix:** trim whitespace and `\r` from each line before parsing.
+None.
 
 ---
 
@@ -106,6 +94,25 @@ instead of wrapping (signed overflow is undefined behaviour).
 "Invalid camp id".
 
 **Tests:** `tests/test_engine.cpp` (block 21).
+
+### BUG-7: Console input handling
+
+**Was:** `readInt` and `readDouble` required the line to end right after the number
+(`ss.eof()`), so a trailing space (`13 `) was rejected as "Not a valid number". On Linux and
+macOS an input file saved with CRLF line endings left a `\r` on every line and failed the same
+way (Windows text mode hides the `\r`). And `input.txt` ended with `d` then `0`: the `0` was read
+inside the data-structures sub-menu, which only leaves on a blank line, so the console printed
+"Invalid option."
+
+**Fix:** a small `trimLine` helper in `console/console_main.cpp` removes spaces, tabs and `\r` at
+both ends of a line before it is parsed. `readInt`, `readDouble`, `readString` and the
+data-structures sub-menu all use it. A line of only blanks still counts as blank. `input.txt`
+now has the blank line before the final `0`. `engine/` is untouched.
+
+**Tests:** `tests/console/console_input_test.sh` runs the real console binary with scripted
+input (18 checks: trailing space, leading space, tab, CRLF, decimals, the sub-menu, bad numbers
+still refused, and `input.txt` running to the end with no error). Run it with `make test-console`.
+Against the old console 11 of the 18 fail; against the fixed one all pass.
 
 ---
 

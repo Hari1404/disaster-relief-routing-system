@@ -4,69 +4,117 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ReliefNet</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2317313b'/%3E%3Cpath d='M9 22L23 10' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='9' cy='22' r='4.5' fill='%23fff'/%3E%3Ccircle cx='23' cy='10' r='4.5' fill='%2339b6c9'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
+<header id="top">
   <h1>ReliefNet</h1>
-  <label>Scenario <select id="scenario"></select></label>
-  <button id="load" type="button">Load</button>
-  <label>Average speed <input id="speed" type="number" min="1" step="any"> km/h</label>
-  <button id="setSpeed" type="button">Set speed</button>
+  <div class="ctl">
+    <label for="scenario">Scenario</label>
+    <select id="scenario"></select>
+    <button id="load" type="button">Load</button>
+  </div>
+  <div class="ctl">
+    <label for="speed">Average speed</label>
+    <input id="speed" type="number" min="1" step="any"> <span>km/h</span>
+    <button id="setSpeed" type="button">Set</button>
+  </div>
   <button id="reset" type="button">Reset</button>
-  <span id="stock"></span>
-  <span id="msg" role="status"></span>
 </header>
 
+<div id="statusbar">
+  <div id="stock"></div>
+  <div id="msg" role="status" aria-live="polite"></div>
+</div>
+
 <aside id="camps">
-  <h2>Camps</h2>
-  <form id="findForm" class="row">
-    <input id="find" type="number" step="1" placeholder="Camp ID" aria-label="Camp ID to search for">
-    <button>Search</button>
-  </form>
-  <table id="campTable"></table>
-  <h3 id="ctitle">Add camp</h3>
-  <p class="hint">Click empty space on the map to fill in the position.</p>
-  <form id="campForm" class="f">
-    <label>ID <input id="cid" type="number" step="1"></label>
-    <label>Name <input id="cname" maxlength="40"></label>
-    <label>X (km) <input id="cx" type="number" step="any"></label>
-    <label>Y (km) <input id="cy" type="number" step="any"></label>
-    <label>Families <input id="cfam" type="number" step="1" min="0" value="10"></label>
-    <label>Roads to <input id="clinks" placeholder="ids, 0 = depot"></label>
-    <button id="cadd">Add camp</button>
-    <button id="ccancel" type="button" hidden>Cancel</button>
-  </form>
+  <div class="seg" role="tablist" aria-label="Camps panel">
+    <button id="segList" type="button" role="tab" class="on">Camps <span id="campCount" class="count"></span></button>
+    <button id="segForm" type="button" role="tab">Add camp</button>
+  </div>
+
+  <section id="paneList">
+    <form id="findForm" class="row">
+      <input id="find" type="number" step="1" placeholder="Search by camp ID" aria-label="Camp ID to search for">
+      <button>Search</button>
+    </form>
+    <div id="confirmBar" role="alert" hidden></div>
+    <ul id="campList" class="list"></ul>
+  </section>
+
+  <section id="paneForm" hidden>
+    <h2 id="ctitle">Add camp</h2>
+    <p class="hint">Click empty space on the map to fill in the position and a suggested road.</p>
+    <form id="campForm" class="f">
+      <label>ID <input id="cid" type="number" step="1"></label>
+      <label>Name <input id="cname" maxlength="40"></label>
+      <label>X (km) <input id="cx" type="number" step="any"></label>
+      <label>Y (km) <input id="cy" type="number" step="any"></label>
+      <label>Families <input id="cfam" type="number" step="1" min="0" value="10"></label>
+      <label>Roads to <input id="clinks" placeholder="ids, 0 = depot"></label>
+      <div class="span2 row"><button id="cadd" class="primary">Add camp</button><button id="ccancel" type="button" hidden>Cancel</button></div>
+    </form>
+  </section>
 </aside>
 
 <main id="mapbox">
-  <svg id="map" viewBox="0 0 800 520" role="img" aria-label="Map of camps and roads"></svg>
-  <div id="routeNote"></div>
-  <div class="hint">Click empty space to place a camp. Click a road to cycle open, slow, blocked. Click a camp to search for it and show its route.</div>
+  <div id="mapwrap">
+    <svg id="map" role="group" aria-label="Map of the depot, camps and roads"></svg>
+    <div id="routeNote"></div>
+    <div id="legend" aria-hidden="true">
+      <span><i class="sw open"></i>open</span>
+      <span><i class="sw slow"></i>slow</span>
+      <span><i class="sw blocked"></i>blocked</span>
+      <span><i class="sw route"></i>route</span>
+      <span><i class="sw pend"></i>pending requests</span>
+    </div>
+  </div>
+  <div id="mapbar">
+    <div class="ctl" id="roadTools">
+      <span class="muted">Road</span>
+      <select id="rfrom" aria-label="Road from"></select>
+      <span aria-hidden="true">–</span>
+      <select id="rto" aria-label="Road to"></select>
+      <button id="addRoad" type="button">Add road</button>
+      <button id="delRoad" type="button">Remove road</button>
+    </div>
+    <div class="hint">Click empty space to place a camp. Click a road to cycle open, slow, blocked. Click a camp to search for it.</div>
+  </div>
 </main>
 
 <aside id="requests">
   <h2>Requests</h2>
-  <form id="reqForm" class="f">
-    <label>Camp <select id="rcamp"></select></label>
-    <label>Resource <select id="rres"><option>food</option><option>water</option><option>medicine</option></select></label>
-    <label>Quantity <input id="rqty" type="number" step="1" min="1" value="50"></label>
-    <label>Urgency <select id="rurg"><option value="4">4 Critical</option><option value="3">3 High</option><option value="2" selected>2 Medium</option><option value="1">1 Low</option></select></label>
-    <label>Families <input id="rfam" type="number" step="1" min="1" value="10"></label>
-    <button>Submit request</button>
-  </form>
-  <div class="row"><button id="process" type="button">Process incoming</button><button id="handle" type="button">Handle next</button></div>
-  <h3>Incoming queue, oldest first</h3>
-  <ul id="queue"></ul>
+  <div class="row bigbtns">
+    <button id="process" type="button" class="primary">Process incoming</button>
+    <button id="handle" type="button" class="primary">Handle next</button>
+  </div>
+  <details id="reqBox" open>
+    <summary>Submit a request</summary>
+    <form id="reqForm" class="f">
+      <label>Camp <select id="rcamp"></select></label>
+      <label>Resource <select id="rres"><option>food</option><option>water</option><option>medicine</option></select></label>
+      <label>Quantity <input id="rqty" type="number" step="1" min="1" value="50"></label>
+      <label>Urgency <select id="rurg"><option value="4">4 Critical</option><option value="3">3 High</option><option value="2" selected>2 Medium</option><option value="1">1 Low</option></select></label>
+      <label>Families <input id="rfam" type="number" step="1" min="1" value="10"></label>
+      <button class="primary alignend">Submit request</button>
+    </form>
+  </details>
+  <h3>Incoming queue <span class="muted">(oldest first)</span></h3>
+  <ul id="queue" class="list"></ul>
   <h3>Ranked active list</h3>
-  <ol id="active"></ol>
+  <ul id="active" class="list"></ul>
 </aside>
 
 <section id="ds">
   <div id="trace"></div>
-  <nav id="tabs"></nav>
+  <div class="tabrow">
+    <nav id="tabs" role="tablist" aria-label="Data structures"></nav>
+    <button id="dsToggle" type="button">Hide panel</button>
+  </div>
   <div id="tab"></div>
 </section>
+<noscript><p style="padding:1rem">ReliefNet needs JavaScript. Everything shown comes from the C++ engine through the local server.</p></noscript>
 <script src="app.js"></script>
 </body>
 </html>

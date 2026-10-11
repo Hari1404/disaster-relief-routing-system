@@ -10,7 +10,8 @@
 #   make test-server        build and run the tests of the server's API layer
 #   make test-server-san    the same, with AddressSanitizer and UBSan
 #   make server-san         build ./relief_server_san (the whole server with the sanitizers on)
-#   make test-all    run test and test-server
+#   make test-console       build the console and run its input-handling regression test (BUG-7)
+#   make test-all    run test, test-server and test-console
 #   make clean       remove build output
 
 CXX      ?= g++
@@ -32,7 +33,7 @@ SERVER_HEADERS := server/Api.h server/httplib.h server/json.hpp
 SERVER_SRC     := server/Api.cpp server/main.cpp
 APITEST_SRC    := tests/server/test_api.cpp
 
-.PHONY: all test test-san console server serve server-san test-server test-server-san test-all clean
+.PHONY: all test test-san console server serve server-san test-server test-server-san test-console test-all clean
 
 all: test console
 
@@ -89,7 +90,10 @@ test-server: run_server_tests
 test-server-san: run_server_tests_san
 	./run_server_tests_san
 
-test-all: test test-server
+test-console: relief_console
+	bash tests/console/console_input_test.sh ./relief_console
+
+test-all: test test-server test-console
 
 clean:
 	rm -f run_tests run_tests.exe run_tests_san relief_console relief_console.exe

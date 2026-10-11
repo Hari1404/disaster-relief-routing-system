@@ -14,10 +14,21 @@ std::string readFile(const std::string& path) {
     return buffer.str();
 }
 
+// Removes spaces, tabs and the '\r' that a Windows line ending leaves behind, at both ends of a line.
+// Without this, "13 " (trailing space) or a CRLF input file was rejected as "Not a valid number" (BUG-7).
+static std::string trimLine(const std::string& s) {
+    const char* blanks = " \t\r\n\f\v";
+    std::size_t first = s.find_first_not_of(blanks);
+    if (first == std::string::npos) return "";
+    std::size_t last = s.find_last_not_of(blanks);
+    return s.substr(first, last - first + 1);
+}
+
 bool readInt(int& out) {
     std::string line;
     while (true) {
         if (!std::getline(std::cin, line)) return false;
+        line = trimLine(line);
         if (line.empty()) return false;
         std::istringstream ss(line);
         if (ss >> out && ss.eof()) return true;
@@ -29,6 +40,7 @@ bool readDouble(double& out) {
     std::string line;
     while (true) {
         if (!std::getline(std::cin, line)) return false;
+        line = trimLine(line);
         if (line.empty()) return false;
         std::istringstream ss(line);
         if (ss >> out && ss.eof()) return true;
@@ -38,6 +50,7 @@ bool readDouble(double& out) {
 
 bool readString(std::string& out) {
     if (!std::getline(std::cin, out)) return false;
+    out = trimLine(out);
     return !out.empty();
 }
 
@@ -289,6 +302,7 @@ int main() {
                 
                 std::string sub;
                 std::getline(std::cin, sub);
+                sub = trimLine(sub);
                 if (sub.empty()) break;
                 
                 if (sub == "a") {
