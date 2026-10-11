@@ -1,4 +1,12 @@
 #include "AVLTree.h"
+#include <climits>
+#include <cmath>
+
+// total + amount, but stops at INT_MAX instead of overflowing (signed overflow is undefined behaviour).
+// Both arguments are >= 0 here. O(1)
+static int saturatingAdd(int total, int amount) {
+    return (total > INT_MAX - amount) ? INT_MAX : total + amount;
+}
 
 // Returns exactly "LL", "RR", "LR" or "RL".
 const char* rotationName(RotationType t) {
@@ -24,6 +32,7 @@ void AVLTree::clear() {
     destroy(root);
     root = nullptr;
     nodeCount = 0;
+    rotations.clear();   // no stale rotation report after a reset
 }
 
 // Post-order traversal to delete every node in the subtree. O(n)
@@ -259,9 +268,10 @@ bool AVLTree::search(int id, Camp& out) const {
     return false;
 }
 
-// Updates name, x, y, and families for the given camp id; false if not found or invalid. O(log n)
+// Updates name, x, y, and families for the given camp id; false if not found or invalid
+// (empty name, negative families, or x/y not finite). O(log n)
 bool AVLTree::update(int id, const std::string& name, double x, double y, int families) {
-    if (name.empty() || families < 0) {
+    if (name.empty() || families < 0 || !isValidCoordinate(x) || !isValidCoordinate(y)) {
         return false;
     }
     AVLNode* curr = root;
@@ -295,13 +305,13 @@ bool AVLTree::addReceived(int id, ResourceType r, int amount) {
         } else {
             switch (r) {
                 case ResourceType::Food:
-                    curr->data.receivedFood += amount;
+                    curr->data.receivedFood = saturatingAdd(curr->data.receivedFood, amount);
                     break;
                 case ResourceType::Water:
-                    curr->data.receivedWater += amount;
+                    curr->data.receivedWater = saturatingAdd(curr->data.receivedWater, amount);
                     break;
                 case ResourceType::Medicine:
-                    curr->data.receivedMedicine += amount;
+                    curr->data.receivedMedicine = saturatingAdd(curr->data.receivedMedicine, amount);
                     break;
             }
             return true;

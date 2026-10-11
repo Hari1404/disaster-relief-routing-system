@@ -1,6 +1,17 @@
 #include "Engine.h"
 #include <cmath>
 
+// Straight-line length between two points, in km.
+static double lineLength(double x1, double y1, double x2, double y2) {
+    return std::sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+}
+
+// A road length the graph will accept: finite and greater than 0.
+// (The negated comparison also rejects NaN.)
+static bool validLength(double d) {
+    return std::isfinite(d) && d > 0.0;
+}
+
 Engine::Engine() {
     reset();
 }
@@ -47,7 +58,7 @@ double Engine::distanceBetween(int a, int b) const {
     double ax, ay, bx, by;
     positionOf(a, ax, ay);
     positionOf(b, bx, by);
-    return std::sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by));
+    return lineLength(ax, ay, bx, by);
 }
 
 void Engine::runDijkstra() {
@@ -68,7 +79,9 @@ OpResult Engine::addCamp(const Camp& c, const std::vector<int>& linkTo) {
         return {Err::Duplicate, "Camp id already exists", 0};
     }
 
-    // Check links
+    // Check links, and work out every road length now, BEFORE anything is changed,
+    // so a bad length can never leave a half-added camp behind.
+    std::vector<double> linkLength;
     for (int link : linkTo) {
         if (link == cCopy.id) return {Err::Invalid, "Link to itself", 0};
         if (link != 0 && !camps_.search(link, tmp)) {
@@ -79,6 +92,11 @@ OpResult Engine::addCamp(const Camp& c, const std::vector<int>& linkTo) {
         if (cCopy.x == tx && cCopy.y == ty) {
             return {Err::Invalid, "Link distance would be 0", 0};
         }
+        double len = lineLength(cCopy.x, cCopy.y, tx, ty);
+        if (!validLength(len)) {
+            return {Err::Invalid, "Link distance out of range", 0};
+        }
+        linkLength.push_back(len);
     }
     
     // Check duplicate links
@@ -92,10 +110,10 @@ OpResult Engine::addCamp(const Camp& c, const std::vector<int>& linkTo) {
     graph_.addNode(cCopy.id);
     int roadsAdded = 0;
     
-    for (int link : linkTo) {
-        double dist = distanceBetween(cCopy.id, link);
-        graph_.addEdge(cCopy.id, link, dist);
-        roadsAdded++;
+    for (size_t i = 0; i < linkTo.size(); ++i) {
+        // Every length was checked above, so this only fails if the graph itself disagrees.
+        // Count only the roads that really exist, so the reported number is true.
+        if (graph_.addEdge(cCopy.id, linkTo[i], linkLength[i])) roadsAdded++;
     }
     
     runDijkstra();
@@ -118,37 +136,37 @@ OpResult Engine::addCamp(const Camp& c, const std::vector<int>& linkTo) {
 }
 
 OpResult Engine::editCamp(int id, const std::string& name, double x, double y, int families) {
-    if (name.empty() || families < 0) return {Err::Invalid, "Invalid camp data", 0};
-    
+    if (name.empty() || families < 0 || !isValidCoordinate(x) || !isValidCoordinate(y)) {
+        return {Err::Invalid, "Invalid camp data", 0};
+    }
+
     Camp c;
     if (!camps_.search(id, c)) return {Err::NotFound, "Camp not found", 0};
     
-    // Check if any existing road gets 0 length
-    if (c.x != x || c.y != y) {
-        std::vector<EdgeInfo> edges;
-        graph_.getEdgesOf(id, edges);
-        for (const auto& e : edges) {
-            double tx, ty;
-            positionOf(e.b, tx, ty);
-            if (tx == x && ty == y) {
-                return {Err::Invalid, "Road length would become 0", 0};
-            }
+    // Work out the new length of every road at this camp BEFORE changing anything,
+    // so a bad length can never leave the camp moved but its roads stale.
+    std::vector<EdgeInfo> edges;
+    graph_.getEdgesOf(id, edges);
+    std::vector<double> newLength;
+    for (const auto& e : edges) {
+        double tx, ty;
+        positionOf(e.b, tx, ty);          // node 0 gives the depot position
+        if (tx == x && ty == y) {
+            return {Err::Invalid, "Road length would become 0", 0};
         }
+        double len = lineLength(x, y, tx, ty);
+        if (!validLength(len)) {
+            return {Err::Invalid, "Road length out of range", 0};
+        }
+        newLength.push_back(len);
     }
     
     camps_.update(id, name, x, y, families);
     
-    // Update road lengths
-    std::vector<EdgeInfo> edges;
-    graph_.getEdgesOf(id, edges);
-    for (const auto& e : edges) {
-        double dist = std::sqrt((x - depotX_) * (x - depotX_) + (y - depotY_) * (y - depotY_));
-        if (e.b != 0) {
-            double tx, ty;
-            positionOf(e.b, tx, ty);
-            dist = std::sqrt((x - tx) * (x - tx) + (y - ty) * (y - ty));
+    for (size_t i = 0; i < edges.size(); ++i) {
+        if (!graph_.setEdgeDistance(id, edges[i].b, newLength[i])) {
+            return {Err::Invalid, "Could not update a road length", 0};
         }
-        graph_.setEdgeDistance(id, e.b, dist);
     }
     
     runDijkstra();
@@ -158,7 +176,8 @@ OpResult Engine::editCamp(int id, const std::string& name, double x, double y, i
 
 OpResult Engine::deleteCamp(int id, bool confirm) {
     Camp tmpC;
-    if (id < 1) return {Err::Invalid, "Cannot delete depot", 0};
+    if (id == 0) return {Err::Invalid, "Cannot delete depot", 0};
+    if (id < 0) return {Err::Invalid, "Invalid camp id", 0};
     if (!camps_.search(id, tmpC)) return {Err::NotFound, "Camp not found", 0};
     
     int pending = pendingCountForCamp(id);
@@ -199,24 +218,33 @@ OpResult Engine::deleteCamp(int id, bool confirm) {
 }
 
 OpResult Engine::setDepotPosition(double x, double y) {
+    if (!isValidCoordinate(x) || !isValidCoordinate(y)) {
+        return {Err::Invalid, "Depot position must be a number within +/-1000000 km", 0};
+    }
+    // Work out every new road length first, before changing anything.
     std::vector<EdgeInfo> edges;
     graph_.getEdgesOf(0, edges);
+    std::vector<double> newLength;
     for (const auto& e : edges) {
         double tx, ty;
         positionOf(e.b, tx, ty);
         if (tx == x && ty == y) {
             return {Err::Invalid, "Road length would become 0", 0};
         }
+        double len = lineLength(x, y, tx, ty);
+        if (!validLength(len)) {
+            return {Err::Invalid, "Road length out of range", 0};
+        }
+        newLength.push_back(len);
     }
     
     depotX_ = x;
     depotY_ = y;
     
-    for (const auto& e : edges) {
-        double tx, ty;
-        positionOf(e.b, tx, ty);
-        double dist = std::sqrt((x - tx) * (x - tx) + (y - ty) * (y - ty));
-        graph_.setEdgeDistance(0, e.b, dist);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        if (!graph_.setEdgeDistance(0, edges[i].b, newLength[i])) {
+            return {Err::Invalid, "Could not update a road length", 0};
+        }
     }
     
     runDijkstra();
@@ -231,8 +259,11 @@ OpResult Engine::addRoad(int a, int b) {
     if (b != 0 && !camps_.search(b, tmpC)) return {Err::NotFound, "Node b not found", 0};
     
     double dist = distanceBetween(a, b);
-    if (dist <= 0) return {Err::Invalid, "Distance is 0", 0};
+    if (!validLength(dist)) {
+        return {Err::Invalid, dist == 0.0 ? "Distance is 0" : "Distance out of range", 0};
+    }
     
+    // The nodes exist and the length is valid, so the only reason left for a refusal is a duplicate road.
     if (!graph_.addEdge(a, b, dist)) {
         return {Err::Duplicate, "Road already exists", 0};
     }
@@ -263,7 +294,7 @@ OpResult Engine::setRoadStatus(int a, int b, RoadStatus s) {
 
 OpResult Engine::setAverageSpeed(double kmh) {
     if (!graph_.setAverageSpeed(kmh)) {
-        return {Err::Invalid, "Speed must be > 0", 0};
+        return {Err::Invalid, "Speed must be a finite number > 0", 0};
     }
     runDijkstra();
     lastTrace_ = "Average speed set to " + std::to_string(kmh) + " | Dijkstra rerun from depot";
@@ -338,37 +369,50 @@ OpResult Engine::handleNext() {
     
     std::vector<Request> active = activeRequests_.toVector();
     Request targetReq;
-    bool foundReachable = false;
+    bool foundServiceable = false;
+    bool sawOutOfStock = false;
+    std::string firstOutOfStockName;
+
+    auto stockOf = [this](ResourceType t) {
+        return t == ResourceType::Food ? stock_.food
+             : t == ResourceType::Water ? stock_.water
+             : stock_.medicine;
+    };
+    auto nameOf = [](ResourceType t) -> const char* {
+        return t == ResourceType::Food ? "food"
+             : t == ResourceType::Water ? "water"
+             : "medicine";
+    };
     
     for (const auto& r : active) {
-        if (dijkstra_.isReachable(r.campId)) {
-            targetReq = r;
-            foundReachable = true;
-            break;
+        // Serve the first request in ranked order that can be served right now:
+        // its camp must be reachable AND the depot must still hold some of its resource.
+        // A request that cannot be served is skipped, so it never blocks the ones behind it.
+        if (!dijkstra_.isReachable(r.campId)) continue;
+        if (stockOf(r.resource) == 0) {
+            if (!sawOutOfStock) {
+                sawOutOfStock = true;
+                firstOutOfStockName = nameOf(r.resource);
+            }
+            continue;
         }
+        targetReq = r;
+        foundServiceable = true;
+        break;
     }
     
-    if (!foundReachable) {
+    if (!foundServiceable) {
+        // Nothing can be served. If at least one request had a reachable camp but no stock,
+        // report the stock-out (it is the more useful fact); otherwise every camp is cut off.
+        if (sawOutOfStock) {
+            return {Err::OutOfStock, "Out of stock for " + firstOutOfStockName, 0};
+        }
         return {Err::Unreachable, "Unreachable: alternate delivery needed", 0};
     }
     
-    int stockAvailable = 0;
-    std::string rName;
-    if (targetReq.resource == ResourceType::Food) {
-        stockAvailable = stock_.food;
-        rName = "food";
-    } else if (targetReq.resource == ResourceType::Water) {
-        stockAvailable = stock_.water;
-        rName = "water";
-    } else {
-        stockAvailable = stock_.medicine;
-        rName = "medicine";
-    }
-    
-    if (stockAvailable == 0) {
-        return {Err::OutOfStock, "Out of stock for " + rName, 0};
-    }
-    
+    // Never 0 here: the loop above skips every request whose resource is out of stock.
+    int stockAvailable = stockOf(targetReq.resource);
+
     int delivered = (targetReq.quantity < stockAvailable) ? targetReq.quantity : stockAvailable;
     int mins = dijkstra_.getDistance(targetReq.campId);
     std::vector<int> path;

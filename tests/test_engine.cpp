@@ -1,5 +1,6 @@
 #include "test_helpers.h"
 #include "../engine/Engine.h"
+#include <limits>
 
 void runEngineTests() {
     auto setupMiniWorld = [](Engine& e) {
@@ -338,5 +339,200 @@ void runEngineTests() {
         res = e.submitRequest(1, ResourceType::Food, 10, 1, 10);
         CHECK(res.value == 1);
         CHECK(!e.lastTrace().empty());
+    }
+    {
+        // 15. Non-finite numbers are rejected and change nothing
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double inf = std::numeric_limits<double>::infinity();
+        Engine e;
+        Camp badX = {1, "Bad", nan, 1.0, 10, 0, 0, 0};
+        Camp badY = {1, "Bad", 1.0, inf, 10, 0, 0, 0};
+        CHECK(e.addCamp(badX, {0}).err == Err::Invalid);
+        CHECK(e.addCamp(badY, {0}).err == Err::Invalid);
+        CHECK(e.campCount() == 0);
+        CHECK(e.roads().empty());
+
+        setupMiniWorld(e);   // camp 1 at (3, 4), camp 2 at (6, 8), depot at (0, 0)
+        CHECK(e.editCamp(1, "C", nan, 4.0, 10).err == Err::Invalid);
+        CHECK(e.editCamp(1, "C", 3.0, -inf, 10).err == Err::Invalid);
+        Camp c;
+        CHECK(e.findCamp(1, c) && c.x == 3.0 && c.y == 4.0 && c.name == "Camp1");
+
+        CHECK(e.setDepotPosition(nan, 0.0).err == Err::Invalid);
+        CHECK(e.setDepotPosition(0.0, inf).err == Err::Invalid);
+        CHECK(e.depotX() == 0.0 && e.depotY() == 0.0);
+
+        CHECK(e.setAverageSpeed(nan).err == Err::Invalid);
+        CHECK(e.setAverageSpeed(inf).err == Err::Invalid);
+        CHECK(e.averageSpeed() == 40.0);
+    }
+    {
+        // 16. An absurdly slow speed gives clamped travel times, not overflow garbage
+        Engine e;
+        setupMiniWorld(e);   // depot - camp 1 - camp 2, two roads of 5 km each
+        CHECK(e.setAverageSpeed(1e-12).ok());
+        auto routes = e.routes();
+        CHECK(routes.size() == 2);
+        if (routes.size() == 2) {
+            CHECK(routes[0].reachable && routes[0].minutes == Graph::kMaxRoadMinutes);
+            CHECK(routes[1].reachable && routes[1].minutes == 2 * Graph::kMaxRoadMinutes);
+        }
+    }
+    {
+        // 17. handleNext skips a request whose resource is out of stock
+        Engine e;
+        e.setAverageSpeed(60.0);
+        setupMiniWorld(e);
+        e.setStock(0, 100, 100);
+        e.submitRequest(1, ResourceType::Food, 10, 4, 10);    // id 1: ranked first, but food is 0
+        e.submitRequest(2, ResourceType::Water, 10, 1, 10);   // id 2: ranked second, water in stock
+        e.processIncoming();
+        auto before = e.rankedRequests();
+        CHECK(before.size() == 2 && before[0].req.id == 1);
+
+        auto res = e.handleNext();
+        CHECK(res.ok() && res.value == 10);
+        auto log = e.deliveries();
+        CHECK(log.size() == 1);
+        if (log.size() == 1) {
+            CHECK(log[0].requestId == 2 && log[0].resource == ResourceType::Water);
+        }
+        CHECK(e.stock().water == 90 && e.stock().food == 0);
+
+        // The food request is still waiting, untouched
+        auto ranked = e.rankedRequests();
+        CHECK(ranked.size() == 1 && ranked[0].req.id == 1 && ranked[0].req.quantity == 10);
+
+        // Only the out-of-stock request is left: OutOfStock, and nothing changes
+        res = e.handleNext();
+        CHECK(res.err == Err::OutOfStock);
+        CHECK(res.message == "Out of stock for food");
+        CHECK(e.deliveries().size() == 1);
+        CHECK(e.rankedRequests().size() == 1);
+
+        // Restocking lets it through
+        e.setStock(50, 90, 100);
+        res = e.handleNext();
+        CHECK(res.ok() && res.value == 10);
+        CHECK(e.rankedRequests().empty());
+    }
+    {
+        // 18. Unreachable and out-of-stock requests are both skipped, and the message says why
+        Engine e;
+        e.setAverageSpeed(60.0);
+        setupMiniWorld(e);
+        Camp c3 = {3, "Camp3", 20.0, 20.0, 100, 0, 0, 0};
+        e.addCamp(c3, {});                                       // no road: unreachable
+        e.setStock(100, 0, 100);
+        e.submitRequest(3, ResourceType::Food, 10, 4, 10);       // id 1: rank 1, camp unreachable
+        e.submitRequest(1, ResourceType::Water, 10, 3, 10);      // id 2: rank 2, water is 0
+        e.submitRequest(2, ResourceType::Medicine, 10, 1, 10);   // id 3: rank 3, can be served
+        e.processIncoming();
+
+        auto res = e.handleNext();
+        CHECK(res.ok());
+        auto log = e.deliveries();
+        CHECK(log.size() == 1 && log[0].requestId == 3);
+
+        // Left: one unreachable, one out of stock. The stock-out is what gets reported.
+        res = e.handleNext();
+        CHECK(res.err == Err::OutOfStock);
+        CHECK(res.message == "Out of stock for water");
+        CHECK(e.rankedRequests().size() == 2);
+
+        // Restock water: that request is served, and only the unreachable one remains
+        e.setStock(100, 50, 100);
+        CHECK(e.handleNext().ok());
+        res = e.handleNext();
+        CHECK(res.err == Err::Unreachable);
+        CHECK(res.message.find("Unreachable: alternate delivery needed") == 0);
+        CHECK(e.rankedRequests().size() == 1);
+    }
+    {
+        // 18. BUG-2: coordinates must stay within +/-1,000,000 km, so a road length can never overflow
+        Engine e;
+        CHECK(e.addCamp({1, "far", 1e200, 0.0, 10, 0, 0, 0}, {0}).err == Err::Invalid);
+        CHECK(e.addCamp({1, "far", 1000001.0, 0.0, 10, 0, 0, 0}, {0}).err == Err::Invalid);
+        CHECK(e.campCount() == 0 && e.roads().empty());          // nothing left behind
+
+        // exactly on the limit is fine, and the number of roads reported is the real number
+        OpResult r = e.addCamp({1, "edge", 1000000.0, 0.0, 10, 0, 0, 0}, {0});
+        CHECK(r.ok() && r.value == 1 && e.roads().size() == 1);
+
+        // the longest possible road (corner to corner, about 2.83 million km) is accepted;
+        // a genuine duplicate is still reported as a duplicate
+        Engine e2;
+        e2.addCamp({1, "A", 1000000.0, 1000000.0, 1, 0, 0, 0}, {});
+        e2.addCamp({2, "B", -1000000.0, -1000000.0, 1, 0, 0, 0}, {});
+        CHECK(e2.addRoad(1, 2).ok());
+        CHECK(e2.addRoad(1, 2).err == Err::Duplicate);
+
+        // two different points so close that their squared distance underflows to 0: refused, camp not added
+        Engine e3;
+        CHECK(e3.addCamp({1, "tiny", 1e-200, 0.0, 10, 0, 0, 0}, {0}).err == Err::Invalid);
+        CHECK(e3.campCount() == 0 && e3.roads().empty());
+    }
+    {
+        // 19. BUG-2: editCamp is all-or-nothing, so the camp never moves while its roads keep stale lengths
+        Engine e;
+        setupMiniWorld(e);   // camp 1 at (3, 4), camp 2 at (6, 8); roads 0-1 and 1-2, both 5 km
+        CHECK(e.editCamp(1, "Camp1", 1e200, 0.0, 100).err == Err::Invalid);
+        CHECK(e.editCamp(1, "Camp1", 1e-200, 0.0, 100).err == Err::Invalid);   // road 0-1 would be length 0
+        Camp c;
+        CHECK(e.findCamp(1, c) && c.x == 3.0 && c.y == 4.0);
+        auto roads = e.roads();
+        CHECK(roads.size() == 2);
+        for (const auto& rd : roads) CHECK(rd.distanceKm == 5.0);
+
+        // a valid move updates both roads: camp 1 to (6, 0) is 6 km from the depot and 8 km from camp 2
+        CHECK(e.editCamp(1, "Camp1", 6.0, 0.0, 100).ok());
+        roads = e.roads();
+        CHECK(roads.size() == 2);
+        for (const auto& rd : roads) CHECK(rd.distanceKm == ((rd.a == 0 || rd.b == 0) ? 6.0 : 8.0));
+    }
+    {
+        // 20. BUG-2: the depot cannot be moved out of range either
+        Engine e;
+        setupMiniWorld(e);
+        CHECK(e.setDepotPosition(1e200, 0.0).err == Err::Invalid);
+        CHECK(e.setDepotPosition(0.0, -1000001.0).err == Err::Invalid);
+        CHECK(e.depotX() == 0.0 && e.depotY() == 0.0);
+        for (const auto& rd : e.roads()) CHECK(rd.distanceKm == 5.0);
+        CHECK(e.setDepotPosition(-1000000.0, 1000000.0).ok());
+    }
+    {
+        // 21. BUG-6: a negative camp id is not "the depot"
+        Engine e;
+        setupMiniWorld(e);
+        OpResult r = e.deleteCamp(-5, false);
+        CHECK(r.err == Err::Invalid && r.message == "Invalid camp id");
+        r = e.deleteCamp(-1, true);
+        CHECK(r.err == Err::Invalid && r.message == "Invalid camp id");
+        r = e.deleteCamp(0, false);
+        CHECK(r.err == Err::Invalid && r.message == "Cannot delete depot");
+        CHECK(e.campCount() == 2);
+    }
+    {
+        // 22. BUG-4: no stale AVL rotation report after a reset
+        Engine e;
+        for (int id : {10, 20, 30}) e.addCamp({id, "n", (double)id, 0.0, 1, 0, 0, 0}, {0});
+        CHECK(!e.lastRotations().empty());
+        e.reset();
+        CHECK(e.campCount() == 0);
+        CHECK(e.lastRotations().empty());
+    }
+    {
+        // 23. BUG-5: a camp's received total stops at INT_MAX instead of overflowing
+        Engine e;
+        setupMiniWorld(e);
+        const int big = std::numeric_limits<int>::max();
+        for (int i = 0; i < 2; ++i) {
+            e.setStock(big, 0, 0);
+            CHECK(e.submitRequest(1, ResourceType::Food, big, 4, 5).ok());
+            CHECK(e.processIncoming().ok());
+            CHECK(e.handleNext().ok());
+        }
+        Camp c;
+        CHECK(e.findCamp(1, c) && c.receivedFood == big);
     }
 }

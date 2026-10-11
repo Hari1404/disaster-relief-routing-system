@@ -36,25 +36,30 @@ public:
     // Returns true if the node exists. O(V)
     bool hasNode(int id) const;
 
-    // Adds an undirected road. false if a==b, node missing, dist<=0, or exists. O(V + degree)
+    // Longest travel time one road can have, in minutes. computeTime clamps to this so that
+    // very slow speeds or very long roads cannot overflow an int, and so that Dijkstra's
+    // running total (at most V roads, so V * 100000) stays inside int range for V < 21000.
+    static constexpr int kMaxRoadMinutes = 100000;
+
+    // Adds an undirected road. false if a==b, node missing, dist<=0 or not finite, or exists. O(V + degree)
     bool addEdge(int a, int b, double distanceKm);
     
     // Removes an undirected road. false if no such road. O(V + degree)
     bool removeEdge(int a, int b);
     
-    // Changes distance and recomputes time. false if missing or dist<=0. O(V + degree)
+    // Changes distance and recomputes time. false if missing or dist<=0 or not finite. O(V + degree)
     bool setEdgeDistance(int a, int b, double distanceKm);
     
     // Changes status and recomputes time. false if missing. O(V + degree)
     bool setStatus(int a, int b, RoadStatus s);
     
-    // Changes average speed and recomputes EVERY road's time. false if kmh<=0. O(V + E)
+    // Changes average speed and recomputes EVERY road's time. false if kmh<=0 or not finite. O(V + E)
     bool setAverageSpeed(double kmh);
     
     // Returns the current average speed. O(1)
     double averageSpeed() const;
 
-    // Computes minutes based on distance and speed. O(1)
+    // Computes whole minutes based on distance and speed: at least 1, at most kMaxRoadMinutes. O(1)
     int  computeTime(double distanceKm, RoadStatus s) const;
 
     // Retrieves info of road between a and b. false if missing. O(V + degree)

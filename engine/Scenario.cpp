@@ -1,4 +1,8 @@
 #include "Engine.h"
+#include <cctype>
+#include <climits>
+#include <cmath>
+#include <cstdlib>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -51,13 +55,11 @@ OpResult Engine::loadScenario(const std::string& text) {
         auto parseDouble = [&](const std::string& s, double& out) {
             char* end = nullptr;
             out = std::strtod(s.c_str(), &end);
-            return end != s.c_str() && *end == '\0';
+            // strtod also accepts "nan" and "inf"; those are not valid map values here.
+            return end != s.c_str() && *end == '\0' && std::isfinite(out);
         };
-        auto parseInt = [&](const std::string& s, int& out) {
-            char* end = nullptr;
-            out = std::strtol(s.c_str(), &end, 10);
-            return end != s.c_str() && *end == '\0';
-        };
+        // Shared with the console (see parseWholeNumber in Types.cpp); safe on 32-bit-long platforms.
+        auto parseInt = [&](const std::string& s, int& out) { return parseWholeNumber(s, out); };
 
         if (cmd == "depot") {
             if (words.size() != 3) return fail("wrong number of words");

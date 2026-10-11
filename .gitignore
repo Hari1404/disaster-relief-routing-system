@@ -1,4 +1,14 @@
+# Build output
+run_tests
 run_tests.exe
+run_tests_san
+relief_console
+relief_console.exe
 *.o
 *.obj
-relief_console.exe
+relief_server
+relief_server.exe
+relief_server_san
+run_server_tests
+run_server_tests.exe
+run_server_tests_san
