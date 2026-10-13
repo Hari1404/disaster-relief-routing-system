@@ -1,10 +1,11 @@
 FROM gcc:13 AS build
 WORKDIR /app
 COPY . .
-RUN g++ -std=c++17 -O2 -I engine -I server engine/*.cpp server/Api.cpp server/main.cpp -o relief_server -pthread
+# Link libstdc++ and libgcc statically: the runtime image below ships an older libstdc++ than the
+# gcc:13 build image, and a dynamic link fails at start with "GLIBCXX_3.4.32 not found".
+RUN g++ -std=c++17 -O2 -I engine -I server engine/*.cpp server/Api.cpp server/main.cpp -o relief_server -pthread -static-libstdc++ -static-libgcc
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/relief_server .
 COPY data ./data
