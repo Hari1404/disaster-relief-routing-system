@@ -9,6 +9,7 @@
 //   relief_server 9000       listen on http://localhost:9000
 
 #include <cstdio>
+#include <cstdlib>
 #include <mutex>
 #include <string>
 
@@ -37,8 +38,47 @@ static bool fileExists(const char* path) {
     return true;
 }
 
+static std::string envOr(const char* name, const char* fallback) {
+    const char* v = std::getenv(name);
+    return (v && *v) ? std::string(v) : std::string(fallback);
+}
+
+static std::string base64Encode(const std::string& in) {
+    static const char* tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    size_t i = 0;
+    while (i + 2 < in.size()) {
+        unsigned n = (unsigned char)in[i] << 16 | (unsigned char)in[i + 1] << 8 | (unsigned char)in[i + 2];
+        out += tbl[n >> 18 & 63]; out += tbl[n >> 12 & 63]; out += tbl[n >> 6 & 63]; out += tbl[n & 63];
+        i += 3;
+    }
+    if (i + 1 == in.size()) {
+        unsigned n = (unsigned char)in[i] << 16;
+        out += tbl[n >> 18 & 63]; out += tbl[n >> 12 & 63]; out += "==";
+    } else if (i + 2 == in.size()) {
+        unsigned n = (unsigned char)in[i] << 16 | (unsigned char)in[i + 1] << 8;
+        out += tbl[n >> 18 & 63]; out += tbl[n >> 12 & 63]; out += tbl[n >> 6 & 63]; out += '=';
+    }
+    return out;
+}
+
+// Compare without stopping at the first difference.
+static bool sameText(const std::string& a, const std::string& b) {
+    unsigned diff = (unsigned)(a.size() ^ b.size());
+    for (size_t i = 0; i < a.size() && i < b.size(); ++i) diff |= (unsigned char)(a[i] ^ b[i]);
+    return diff == 0;
+}
+
 int main(int argc, char** argv) {
     int port = kDefaultPort;
+    // Hosting platforms (Render, Railway, Fly, ...) tell the program its port through $PORT.
+    if (argc == 1) {
+        const char* envPort = std::getenv("PORT");
+        if (envPort && *envPort && !readPort(envPort, port)) {
+            std::fprintf(stderr, "Invalid PORT environment variable: %s\n", envPort);
+            return 1;
+        }
+    }
     if (argc > 2 || (argc == 2 && !readPort(argv[1], port))) {
         std::fprintf(stderr, "Usage: %s [port]    (port 1 to 65535, default %d)\n", argv[0], kDefaultPort);
         return 1;
@@ -58,7 +98,33 @@ int main(int argc, char** argv) {
     std::mutex printLock;
 
     httplib::Server svr;
+    // Deployment settings (all optional for local use):
+    //   BIND_HOST   address to listen on, default 127.0.0.1 (the Docker image sets 0.0.0.0)
+    //   APP_USER, APP_PASS   turn on HTTP Basic login for every page and API call
+    const std::string bindHost = envOr("BIND_HOST", "127.0.0.1");
+    const std::string appUser  = envOr("APP_USER", "");
+    const std::string appPass  = envOr("APP_PASS", "");
+    const bool authOn = !appUser.empty() && !appPass.empty();
+    const bool publicBind = bindHost != "127.0.0.1" && bindHost != "localhost";
+    if (publicBind && !authOn) {
+        std::fprintf(stderr, "Refusing to listen on %s without a login. Set APP_USER and APP_PASS.\n", bindHost.c_str());
+        return 1;
+    }
+    const std::string expectedAuth = "Basic " + base64Encode(appUser + ":" + appPass);
+
     svr.set_payload_max_length(64 * 1024);   // no request body here needs more than a few hundred bytes
+
+    if (authOn) {
+        svr.set_pre_routing_handler([expectedAuth](const httplib::Request& req, httplib::Response& res) {
+            if (sameText(req.get_header_value("Authorization"), expectedAuth)) {
+                return httplib::Server::HandlerResponse::Unhandled;
+            }
+            res.status = 401;
+            res.set_header("WWW-Authenticate", "Basic realm=\"ReliefNet\", charset=\"UTF-8\"");
+            res.set_content("Login required", "text/plain; charset=utf-8");
+            return httplib::Server::HandlerResponse::Handled;
+        });
+    }
 
     bool haveWeb = svr.set_mount_point("/", "web");
     svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
@@ -72,6 +138,12 @@ int main(int argc, char** argv) {
         for (const auto& kv : req.params) in.query.push_back(kv);
         in.body   = req.body;
         in.origin = req.get_header_value("Origin");
+        // Behind a hosting proxy the page's origin is the public address, not localhost. A request
+        // whose Origin matches the Host it was sent to is the page talking to its own server.
+        const std::string host = req.get_header_value("Host");
+        if (!host.empty() && (in.origin == "http://" + host || in.origin == "https://" + host)) {
+            in.origin.clear();
+        }
 
         ApiResponse out;
         {
@@ -115,14 +187,14 @@ int main(int argc, char** argv) {
         std::fflush(stdout);
     });
 
-    // Local only: bind to the loopback address, never to the network.
-    if (!svr.bind_to_port("127.0.0.1", port)) {
+    // Local only unless BIND_HOST says otherwise (and then a login is required, see above).
+    if (!svr.bind_to_port(bindHost.c_str(), port)) {
         std::fprintf(stderr, "Cannot listen on port %d (is another program using it?). Try: %s %d\n",
                      port, argv[0], port == kDefaultPort ? 8081 : kDefaultPort);
         return 1;
     }
 
-    std::printf("ReliefNet server: http://localhost:%d/   (Ctrl+C to stop)\n", port);
+    std::printf("ReliefNet server: http://%s:%d/   (login %s, Ctrl+C to stop)\n", bindHost.c_str(), port, authOn ? "ON" : "off");
     if (!haveWeb) {
         std::printf("web/ folder not found: only the API and a placeholder page are served.\n");
     }
