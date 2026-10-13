@@ -2,7 +2,9 @@
 
 A disaster-relief simulation engine in C++17. Camps, roads, requests and deliveries are all handled by hand-written data structures: a queue, linked lists, an AVL tree, a weighted graph, Dijkstra's algorithm and a merge sort. The engine does no input or output; the console menu and the web server both call it.
 
-**Status:** Phases 1 to 4 are done (engine, four demo scenarios, console menu, tests, local web server with its JSON API, and the browser page). See `docs/PROJECT_PLAN.md` for the plan and `docs/PHASE_*_SPEC.md` for each phase.
+**Live demo:** https://relifnet.onrender.com (the page is behind a login, set by the host; see "Deploy" below). It runs on Render's free tier, so after a period of inactivity the first load can take about a minute while the service wakes up.
+
+**Status:** Phases 1 to 4 are done (engine, four demo scenarios, console menu, tests, web server with its JSON API, and the browser page). The server is also deployed online with a Docker image and a login (see "Deploy"). See `docs/PROJECT_PLAN.md` for the plan and `docs/PHASE_*_SPEC.md` for each phase.
 
 ## Layout
 
@@ -11,7 +13,8 @@ A disaster-relief simulation engine in C++17. Camps, roads, requests and deliver
 | `engine/` | The data structures and the `Engine` class that ties them together |
 | `console/` | The interactive console menu |
 | `web/` | The browser page: `index.html`, `style.css`, `app.js`. Plain HTML, CSS and JavaScript, no downloads, works offline |
-| `server/` | The local web server: `main.cpp` (sockets), `Api.cpp` / `Api.h` (every endpoint), plus two downloaded single headers |
+| `server/` | The web server: `main.cpp` (sockets, login, deployment settings), `Api.cpp` / `Api.h` (every endpoint), plus two single-header libraries |
+| `Dockerfile` | Builds the server into a small image for hosting (used by Render) |
 | `tests/` | One test file per module, plus `run_tests.cpp` |
 | `tests/server/` | Tests of the API layer (`test_api.cpp`) and a curl script that checks a running server (`curl_smoke.sh`) |
 | `tests/console/` | `console_input_test.sh`: runs the real console with scripted input to check how it reads a line (BUG-7) |
@@ -42,7 +45,7 @@ Start `relief_console` (or `relief_console.exe`). Menu item 1 loads one of the f
 
 ## Web server
 
-`relief_server` serves a JSON API on `http://localhost:8080/` and the page in `web/`. It listens on the loopback address only, so other computers cannot reach it. The engine does the work; the server only reads the request, calls the engine and sends back the full state.
+`relief_server` serves a JSON API on `http://localhost:8080/` and the page in `web/`. By default it listens on the loopback address only, so other computers cannot reach it; to host it online, see "Deploy" below. The engine does the work; the server only reads the request, calls the engine and sends back the full state.
 
 **The two libraries.** `server/` needs two single-header libraries: cpp-httplib (HTTP server) and nlohmann/json (JSON). Both are already committed in `server/` (`httplib.h` 0.18.7 and `json.hpp` 3.11.3), so a normal clone builds without any download. If either file is ever missing, fetch it again from the repository root in PowerShell:
 
@@ -98,6 +101,30 @@ Then open `http://localhost:8080/` in a browser. If `web/` is missing, a placeho
 **Status codes.** 200 done. 400 bad input (wrong type, missing or unknown field, out of range). 404 camp, request, road or scenario not found. 409 valid request the current state refuses: duplicate id or road, delete needs confirmation, nothing to process or handle, unreachable camp, out of stock. 403 a request carrying another web page's `Origin` header. 405 wrong method. 413 body over 64 KB.
 
 **Checks.** `make test-console` runs the console input-handling test (needs bash; on Windows run `build_console.bat`, then `bash tests/console/console_input_test.sh ./relief_console.exe` in Git Bash). `make test-server` (API layer, calls `Api::handle` directly, compares it against the engine on random sessions) and `make test-server-san` (the same with the sanitizers). With a server running, `bash tests/server/curl_smoke.sh 8080` exercises every endpoint over real HTTP; it starts with a reset, so it wipes the loaded state.
+
+## Deploy
+
+The live demo at https://relifnet.onrender.com is a Render **Web Service** that builds the `Dockerfile` in this repository from the `Graph,-Dijkstra,-Engine,` branch. The image compiles the server with g++ 13 and links `libstdc++` statically, so it runs on the small `debian:bookworm-slim` base.
+
+The server reads these settings from environment variables. Set them in the host's dashboard (on Render: the service's **Environment** tab), never in the code or the repository:
+
+| Variable | Needed | Meaning |
+|---|---|---|
+| `APP_USER` | Yes when online | Username for the HTTP Basic login that protects every page and API call |
+| `APP_PASS` | Yes when online | Password for that login |
+| `BIND_HOST` | Set by the Dockerfile | Address to listen on. Default `127.0.0.1` (local only); the image sets `0.0.0.0` |
+| `PORT` | Set by the host | Port to listen on when no port argument is given. Default 8080 |
+
+The server refuses to start on a public address (`BIND_HOST` other than `127.0.0.1` or `localhost`) unless both `APP_USER` and `APP_PASS` are set, so it can never be exposed without a login. If a deploy exits at once with "Refusing to listen ... Set APP_USER and APP_PASS", those two variables are missing.
+
+To try the image on your own machine (needs Docker):
+
+```sh
+docker build -t relifnet .
+docker run --rm -p 8080:10000 -e PORT=10000 -e APP_USER=demo -e APP_PASS=change-me relifnet
+```
+
+Then open `http://localhost:8080/` and log in with the username and password you passed.
 
 ## Demo scenarios
 
